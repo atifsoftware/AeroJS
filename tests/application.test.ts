@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
-import { Aero, createTestClient } from '../src/index.js';
+import { Aero, ApplicationCore, createTestClient } from '../src/index.js';
 
 describe('Aero Application Core', () => {
   let app: Aero;
@@ -226,5 +226,14 @@ describe('Aero Application Core', () => {
     testApp.onUpgrade(upgradeHandler);
 
     expect(testApp).toBeDefined();
+  });
+
+  it('instantiates and operates standalone ApplicationCore without fullstack extensions', async () => {
+    const core = new ApplicationCore();
+    core.get('/core-ping', (ctx) => ctx.send('core-pong'));
+    const client = createTestClient(core as any);
+    const res = await client.get('/core-ping');
+    expect(res.status).toBe(200);
+    expect(res.text()).toBe('core-pong');
   });
 });

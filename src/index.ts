@@ -3,7 +3,7 @@
  * @description Main public API entry point for Aero Web Framework.
  */
 
-export { Aero, type HookName, type HookMap } from './core/application.js';
+export { Aero, ApplicationCore, type HookName, type HookMap } from './core/application.js';
 export { AeroRequest, type AeroRequestOptions } from './core/request.js';
 export { AeroResponse } from './core/response.js';
 export { AeroContext, type DefaultState, type ContainerLike } from './core/context.js';
