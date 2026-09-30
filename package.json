@@ -1,7 +1,11 @@
 {
   "name": "aero",
   "version": "0.1.0",
-  "description": "A minimal, fast, and elegant web framework for Node.js — Fastify's performance, AdonisJS's DX, Express's simplicity.",
+  "description": "A minimal, blazing-fast, zero-dependency full-stack web framework for Node.js — supporting React, Vue 3, Inertia.js, and SSR monoliths.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atifsoftware/AeroJS.git"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

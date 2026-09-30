@@ -1,14 +1,21 @@
-# 🚀 Aero
+<div align="center">
+  <img src="./assets/logo.png" alt="AeroJS Full-Stack Web Framework Logo" width="280" style="border-radius: 16px; margin-bottom: 20px;" />
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/aero/aero)
-[![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aero)
-[![Coverage: 86%+](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](package.json)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
+  # AeroJS
+  ### The Blazing-Fast, Zero-Dependency Full-Stack Web Framework for Node.js
 
-> **"Fastify's performance. AdonisJS's DX. Express's simplicity."**  
-> A modern, elegant, blazing-fast web framework for Node.js with **zero runtime dependencies**.
+  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/atifsoftware/AeroJS)
+  [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aero)
+  [![Coverage: 86%+](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](package.json)
+  [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
+  [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+  <p align="center">
+    <strong>Fastify's speed. AdonisJS's DX. Express's simplicity.</strong><br>
+    Natively crafted for <strong>React</strong>, <strong>Vue 3</strong> (Inertia.js), and <strong>SSR Monoliths</strong> (Edge.js, EJS).
+  </p>
+</div>
 
 ---
 
@@ -754,6 +761,10 @@ Measured on Node.js v24 (x64) using `npm run benchmark`:
 | **Zero-Dependency CORS** | ❌ (external) | ❌ (external) | ❌ (plugin) | ❌ (package) | **✅ Built-in** |
 | **SSR Views (Edge.js, EJS)** | ❌ (external) | ❌ (external) | ❌ (plugin) | ✅ (Edge) | **✅ Unified** |
 | **First-Class Inertia.js Adapter**| ❌ (community) | ❌ (community) | ❌ (community) | ✅ (package) | **✅ Built-in** |
+
+> [!NOTE]
+> **Design Philosophy Note:**  
+> Express, Koa, Fastify, and AdonisJS are battle-tested giants that deeply inspired AeroJS. While those frameworks achieve many of these capabilities through extensive third-party plugins and ecosystem packages, AeroJS is uniquely architected to provide these full-stack features **out-of-the-box with ZERO runtime dependencies**.
 
 ---
 
