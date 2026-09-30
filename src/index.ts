@@ -80,6 +80,31 @@ export {
   type WebSocketUpgradeHandler,
 } from './ws/websocket.js';
 export {
+  Database,
+  DB,
+  Model,
+  Relation,
+  QueryBuilder,
+  Schema,
+  TableBlueprint,
+  Migrator,
+  type DatabaseAdapter,
+  type DatabaseRow,
+  type WhereClause,
+  type JoinClause,
+  type PaginationResult,
+  type RelationDefinition,
+  type ColumnDefinition,
+  type Migration,
+} from './database/index.js';
+export {
+  Logger,
+  requestLogger,
+  RequestContext,
+  type LogLevel,
+  type RequestStore,
+} from './logging/index.js';
+export {
   ViewEngine,
   SimpleViewDriver,
   createEdgeDriver,
