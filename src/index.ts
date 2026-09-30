@@ -121,6 +121,12 @@ export {
   type InertiaProp,
 } from './inertia/inertia.js';
 export {
+  SSREngine,
+  type SSRRenderResult,
+  type SSRRenderer,
+  type SSREngineOptions,
+} from './ssr/index.js';
+export {
   parseBody,
   readRawBody,
   parseUrlEncoded,

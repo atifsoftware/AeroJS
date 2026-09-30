@@ -5,6 +5,7 @@
 
 import type { AeroContext, DefaultState } from '../core/context.js';
 import type { Middleware } from '../core/types.js';
+import { SSREngine, type SSREngineOptions } from '../ssr/engine.js';
 
 export interface InertiaPage<Props = Record<string, unknown>> {
   component: string;
@@ -18,6 +19,7 @@ export type InertiaProp = unknown | (() => unknown | Promise<unknown>);
 export interface InertiaConfig {
   rootView?: string | ((page: InertiaPage) => string | Promise<string>);
   version?: string | (() => string | Promise<string>);
+  ssr?: boolean | SSREngineOptions | ((page: InertiaPage) => Promise<{ head?: string[]; body: string } | string>);
 }
 
 /**
@@ -34,6 +36,7 @@ export class Inertia<State = DefaultState> {
   private readonly sharedProps = new Map<string, InertiaProp>();
   private readonly version: string;
   private readonly rootView: (page: InertiaPage) => string | Promise<string>;
+  private readonly ssrEngine?: SSREngine;
 
   constructor(
     private readonly ctx: AeroContext<State, any>,
@@ -41,11 +44,26 @@ export class Inertia<State = DefaultState> {
   ) {
     this.version = typeof config.version === 'function' ? String(config.version()) : config.version ?? '1.0';
 
+    if (config.ssr) {
+      if (typeof config.ssr === 'function') {
+        this.ssrEngine = new SSREngine({ render: config.ssr });
+      } else if (typeof config.ssr === 'object') {
+        this.ssrEngine = new SSREngine(config.ssr);
+      } else {
+        this.ssrEngine = new SSREngine();
+      }
+    }
+
     if (typeof config.rootView === 'function') {
       this.rootView = config.rootView;
     } else {
       const template = config.rootView ?? this.defaultHtmlTemplate();
-      this.rootView = (page: InertiaPage) => {
+      this.rootView = async (page: InertiaPage) => {
+        if (this.ssrEngine) {
+          const rendered = await this.ssrEngine.render(page);
+          return rendered.html;
+        }
+
         const escaped = JSON.stringify(page)
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
