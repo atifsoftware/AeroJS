@@ -161,6 +161,15 @@ export {
   type RouteValidationSchema,
   type ValidationErrorDetail,
 } from './validation/schema.js';
+export {
+  Validator,
+  VineHelper,
+  defaultBengaliVineMessages,
+} from './validation/index.js';
+export {
+  UnprocessableEntityError,
+  ValidationError,
+} from './core/errors.js';
 export type {
   HttpVerb,
   ParsedQuery,

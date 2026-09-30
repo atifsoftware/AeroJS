@@ -148,3 +148,24 @@ export class InternalError extends AeroError {
     this.name = 'InternalError';
   }
 }
+
+/**
+ * HTTP 422 Unprocessable Entity error (Validation Error).
+ */
+export class UnprocessableEntityError extends AeroError {
+  public readonly errors: Record<string, string | string[]>;
+
+  constructor(
+    message = 'Validation Failed',
+    errors: Record<string, string | string[]> = {},
+    code = 'VALIDATION_ERROR'
+  ) {
+    super(message, 422, code, errors);
+    this.name = 'UnprocessableEntityError';
+    this.errors = errors;
+  }
+}
+
+export const ValidationError = UnprocessableEntityError;
+export type ValidationError = UnprocessableEntityError;
+

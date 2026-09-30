@@ -16,6 +16,7 @@ import {
   NotFoundError,
   MethodNotAllowedError,
   InternalError,
+  UnprocessableEntityError,
 } from './errors.js';
 
 export type DefaultState = Record<string, unknown>;
@@ -169,10 +170,63 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
         throw new NotFoundError(message ?? 'Not Found', undefined, details);
       case 405:
         throw new MethodNotAllowedError(message ?? 'Method Not Allowed');
+      case 422:
+        throw new UnprocessableEntityError(message ?? 'Validation Failed', (details as any) || {});
       case 500:
         throw new InternalError(message ?? 'Internal Server Error', undefined, details);
       default:
         throw new AeroError(message ?? `HTTP Error ${status}`, status, undefined, details);
     }
+  }
+
+  /**
+   * Validates incoming request data (combines params, query, and body).
+   * Accepts either:
+   * 1. A VineJS schema / compiled validator
+   * 2. A string rules object (e.g. { name: 'required|min:3', email: 'required|email' })
+   *
+   * @throws {UnprocessableEntityError} with 422 status if validation fails.
+   */
+  public async validate<T = any>(
+    schemaOrRules: any,
+    options: {
+      messages?: Record<string, string>;
+      labels?: Record<string, string>;
+      locale?: 'bn' | 'en';
+    } = {}
+  ): Promise<T> {
+    const rawData = {
+      ...(typeof this.params === 'object' && this.params !== null ? this.params : {}),
+      ...(typeof this.query === 'object' && this.query !== null ? this.query : {}),
+      ...(typeof this.body === 'object' && this.body !== null ? this.body : {}),
+    };
+
+    // If VineJS schema or compiled validator
+    if (
+      schemaOrRules &&
+      typeof schemaOrRules === 'object' &&
+      ('validate' in schemaOrRules || 'schema' in schemaOrRules)
+    ) {
+      const { VineHelper } = await import('../validation/vine.js');
+      return await VineHelper.validate<T>(schemaOrRules, rawData, options.messages || {});
+    }
+
+    // String rules validator
+    const { Validator } = await import('../validation/rules-validator.js');
+    const validator = await Validator.makeAsync(
+      rawData,
+      schemaOrRules,
+      options.messages || {},
+      options.labels || {},
+      options.locale || 'bn'
+    );
+
+    if (validator.fails()) {
+      const errors = validator.errors();
+      const firstMsg = validator.first() || 'Validation failed';
+      throw new UnprocessableEntityError(firstMsg, errors);
+    }
+
+    return validator.validated() as T;
   }
 }
