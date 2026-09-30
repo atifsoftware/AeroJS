@@ -101,13 +101,13 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
     const uiRoute = options.route || '/docs';
     const specRoute = options.specRoute || '/openapi.json';
 
-    this.get(specRoute, async (ctx) => {
+    this.get(specRoute, async (ctx: any) => {
       const { SwaggerGenerator } = await import('../swagger/generator.js');
-      const spec = SwaggerGenerator.generate(this.router.routes, options);
+      const spec = SwaggerGenerator.generate(this.router.routes as any, options);
       ctx.status(200).json(spec);
     });
 
-    this.get(uiRoute, async (ctx) => {
+    this.get(uiRoute, async (ctx: any) => {
       const { renderSwaggerUI } = await import('../swagger/ui.js');
       const html = renderSwaggerUI({
         title: options.title || 'AeroJS API Documentation',

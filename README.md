@@ -48,6 +48,15 @@
   19. [Memory-Safe Rate Limiter (`useRateLimit`, `rateLimit`)](#19-memory-safe-rate-limiter-useratelimit-ratelimit)
   20. [Security Headers & CSRF Protection (`useSecurityHeaders`, `csrf`)](#20-security-headers--csrf-protection-usesecurityheaders-csrf)
   21. [Real-Time WebSocket Support (`app.ws`, `AeroWebSocket`)](#21-real-time-websocket-support-appws-aerowebsocket)
+  22. [Active Record ORM & QueryBuilder (`Model`, `DB`, `Migrator`)](#22-active-record-orm--querybuilder-model-db-migrator)
+  23. [Knex, Prisma & Drizzle ORM Integrations](#23-knex-prisma--drizzle-orm-integrations)
+  24. [RFC 5424 Structured Logger (`Logger`, `RequestContext`)](#24-rfc-5424-structured-logger-logger-requestcontext)
+  25. [VineJS & Rules Validation (`Validator`, `VineHelper`)](#25-vinejs--rules-validation-validator-vinehelper)
+  26. [Next.js-Style Server-Side Rendering (`SSREngine`)](#26-nextjs-style-server-side-rendering-ssrengine)
+  27. [Multi-Disk Storage & File Uploads (`Storage`, `UploadedFile`)](#27-multi-disk-storage--file-uploads-storage-uploadedfile)
+  28. [Background Queue & Mail System (`Queue`, `Mail`)](#28-background-queue--mail-system-queue-mail)
+  29. [OpenAPI 3.0 & Interactive Swagger UI (`useSwagger`)](#29-openapi-30--interactive-swagger-ui-useswagger)
+  30. [Aero Command-Line Interface (`aero` CLI)](#30-aero-command-line-interface-aero-cli)
 - [Performance, Size & Advantages](#-performance-size--advantages)
 - [Comparison Matrix](#-comparison-matrix)
 - [License](#-license)
@@ -882,6 +891,214 @@ app.ws('/ws', (ws, req) => {
 });
 
 app.listen(3000);
+```
+
+---
+
+### 22. Active Record ORM & QueryBuilder (`Model`, `DB`, `Migrator`)
+
+Eloquent and Lucid inspired Active Record ORM with Proxy auto-wiring, relationships, and schema migrations:
+
+```typescript
+import { Model, DB, Schema, Migrator } from 'aero';
+
+// 1. Define Model with Relationships
+class User extends Model {
+  public static override table = 'users';
+  public static override hidden = ['password'];
+  public static override softDeletes = true;
+
+  public posts() {
+    return this.hasMany(Post, 'user_id', 'id');
+  }
+}
+
+class Post extends Model {
+  public static override table = 'posts';
+}
+
+// 2. Active Record Operations & Mutation via Proxy
+const user = await User.create({ name: 'Alice', email: 'alice@aero.org' });
+user.name = 'Alice Smith';
+await user.save();
+
+// 3. Eager Loading (Solves N+1 Query Problem)
+const usersWithPosts = await User.query().with('posts').get();
+
+// 4. Fluent QueryBuilder
+const admins = await DB.table('users')
+  .where('role', 'admin')
+  .orderBy('id', 'DESC')
+  .paginate(1, 15);
+```
+
+---
+
+### 23. Knex, Prisma & Drizzle ORM Integrations
+
+First-class adapters allowing developers to choose any database query engine while enjoying full Aero integration:
+
+```typescript
+import Aero from 'aero';
+import knex from 'knex';
+import { PrismaClient } from '@prisma/client';
+import { drizzle } from 'drizzle-orm/node-postgres';
+
+const app = new Aero();
+
+// 1. Knex Integration
+app.useKnex(knex({ client: 'pg', connection: process.env.DATABASE_URL }));
+
+// 2. Prisma Integration
+app.usePrisma(new PrismaClient());
+
+// 3. Drizzle Integration
+app.useDrizzle(drizzle(process.env.DATABASE_URL));
+
+app.get('/users', async (ctx) => {
+  // Access via context
+  const usersKnex = await ctx.knex('users').where('active', true);
+  const usersPrisma = await ctx.prisma.user.findMany();
+  const usersDrizzle = await ctx.drizzle.select().from(...);
+});
+```
+
+---
+
+### 24. RFC 5424 Structured Logger (`Logger`, `RequestContext`)
+
+Structured logger supporting 8 RFC 5424 Syslog levels, automatic RequestContext correlation via `AsyncLocalStorage`, and slow database query detection:
+
+```typescript
+import { Logger, requestLogger } from 'aero';
+
+app.use(requestLogger());
+
+app.get('/orders', async (ctx) => {
+  Logger.info('Processing order', { orderId: 452 });
+  // Automatically logs with client IP, user identity, and HTTP method/path
+});
+```
+
+---
+
+### 25. VineJS & Rules Validation (`Validator`, `VineHelper`)
+
+Fast input validation with bilingual (Bengali & English) localized error messages:
+
+```typescript
+app.post('/register', async (ctx) => {
+  // Validates params, query, and body in one call
+  const validated = await ctx.validate({
+    name: 'required|min:3',
+    email: 'required|email|unique:users,email',
+    password: 'required|min:8|confirmed',
+  }, { locale: 'bn' }); // Returns formatted Bengali errors on 422 Unprocessable Entity
+});
+```
+
+---
+
+### 26. Next.js-Style Server-Side Rendering (`SSREngine`)
+
+Server-side pre-rendering for React and Vue 3 Inertia components with automatic SEO `<head>` tag extraction:
+
+```typescript
+app.useInertia({
+  ssr: {
+    components: {
+      Home: (props) => ({
+        head: ['<title>Home - Aero Framework</title>'],
+        body: `<h1>Welcome, ${props.name}!</h1>`,
+      }),
+    },
+  },
+});
+```
+
+---
+
+### 27. Multi-Disk Storage & File Uploads (`Storage`, `UploadedFile`)
+
+Zero-dependency RFC 7578 multipart file upload parser with multi-disk support (`local`, `s3`, `memory`):
+
+```typescript
+import { Storage } from 'aero';
+
+app.post('/upload', async (ctx) => {
+  const avatar = ctx.file('avatar');
+  
+  // Validate size, extensions, and MIME
+  const check = avatar.validate({ maxSize: 2 * 1024 * 1024, extensions: ['.png', '.jpg'] });
+  if (!check.valid) return ctx.status(422).json({ error: check.errors[0] });
+
+  // Store file on configured disk
+  const path = await avatar.store('avatars', 'local');
+  ctx.status(201).json({ url: Storage.url(path) });
+});
+```
+
+---
+
+### 28. Background Queue & Mail System (`Queue`, `Mail`)
+
+Database and memory-backed background job queue with retry backoffs, failure hooks, and fluent transactional mailing:
+
+```typescript
+import { Queue, Job, Mail } from 'aero';
+
+class SendWelcomeEmail extends Job {
+  constructor(public email: string) { super(); this.tries = 3; }
+  async handle() {
+    await Mail.send(msg => {
+      msg.to(this.email).subject('Welcome!').html('<h1>Glad to have you!</h1>');
+    });
+  }
+}
+
+// Dispatch to background queue
+await Queue.dispatch(new SendWelcomeEmail('user@aero.org'));
+
+// Or queue mail directly
+await Mail.queue(msg => msg.to('user@aero.org').subject('Newsletter'));
+```
+
+---
+
+### 29. OpenAPI 3.0 & Interactive Swagger UI (`useSwagger`)
+
+Instant, zero-dependency interactive Swagger documentation at `/docs` with live request runner and dark theme:
+
+```typescript
+app.useSwagger({
+  title: 'My Project API',
+  version: '1.0.0',
+  route: '/docs',              // Interactive Swagger UI
+  specRoute: '/openapi.json',  // OpenAPI 3.0 JSON specification
+  security: true,              // JWT Bearer auth button
+});
+```
+
+---
+
+### 30. Aero Command-Line Interface (`aero` CLI)
+
+Developer CLI tool for scaffolding boilerplate and running database migrations:
+
+```bash
+# Display help and commands
+npx aero --help
+
+# Generate controllers, models, and middleware
+npx aero make:controller UserController
+npx aero make:model Product -m
+npx aero make:middleware Authenticate
+npx aero make:migration create_orders_table
+
+# Database migrations
+npx aero migrate
+npx aero migrate:rollback
+npx aero migrate:status
 ```
 
 ---

@@ -31,7 +31,8 @@ export class VineHelper {
   public static async getVine(): Promise<any> {
     if (this._vineModule) return this._vineModule;
     try {
-      const mod = await import('@vinejs/vine');
+      // @ts-ignore
+      const mod: any = await import('@vinejs/vine');
       this._vineModule = mod.default || mod;
       return this._vineModule;
     } catch {
@@ -72,7 +73,8 @@ export class VineHelper {
       let options: any;
       if (Object.keys(customMessages).length > 0) {
         try {
-          const mod = await import('@vinejs/vine');
+          // @ts-ignore
+          const mod: any = await import('@vinejs/vine');
           const SimpleMessagesProvider = mod.SimpleMessagesProvider;
           if (SimpleMessagesProvider) {
             options = {

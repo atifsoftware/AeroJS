@@ -93,7 +93,7 @@ export class AeroCLI {
           if (executed.length === 0) {
             console.log('  No migrations have been executed yet.');
           } else {
-            executed.forEach((m) => console.log(`  [BATCH ${m.batch}] ${m.name} (${m.executed_at})`));
+            executed.forEach((m) => console.log(`  [EXECUTED] ${m}`));
           }
           return 0;
         }
