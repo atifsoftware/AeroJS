@@ -171,8 +171,14 @@ export {
   type SwaggerUIOptions,
 } from './swagger/index.js';
 export {
+  AeroCLI,
+} from './cli/index.js';
+export {
   KnexDatabaseAdapter,
   useKnex,
+  usePrisma,
+  useDrizzle,
+  type PrismaIntegrationOptions,
 } from './database/index.js';
 export {
   parseBody,

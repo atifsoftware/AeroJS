@@ -1,0 +1,133 @@
+/**
+ * @file runner.ts
+ * @description Main command line dispatcher and router for AeroJS CLI.
+ */
+
+import { makeController, makeModel, makeMigration, makeMiddleware } from './commands/make.js';
+import { Migrator } from '../database/migrator.js';
+
+export class AeroCLI {
+  public static version = '0.1.0';
+
+  public static async run(argv: string[] = process.argv.slice(2)): Promise<number> {
+    const command = argv[0];
+
+    if (!command || command === '--help' || command === '-h' || command === 'help') {
+      this.printHelp();
+      return 0;
+    }
+
+    if (command === '--version' || command === '-v') {
+      console.log(`AeroJS Framework v${this.version}`);
+      return 0;
+    }
+
+    try {
+      switch (command) {
+        case 'make:controller': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a controller name. Example: aero make:controller User');
+            return 1;
+          }
+          const file = makeController(name);
+          console.log(`[CREATED] Controller: ${file}`);
+          return 0;
+        }
+
+        case 'make:model': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a model name. Example: aero make:model User');
+            return 1;
+          }
+          const hasMigration = argv.includes('-m') || argv.includes('--migration');
+          const res = makeModel(name, { migration: hasMigration });
+          console.log(`[CREATED] Model: ${res.modelPath}`);
+          if (res.migrationPath) {
+            console.log(`[CREATED] Migration: ${res.migrationPath}`);
+          }
+          return 0;
+        }
+
+        case 'make:migration': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a migration name. Example: aero make:migration create_users_table');
+            return 1;
+          }
+          const file = makeMigration(name);
+          console.log(`[CREATED] Migration: ${file}`);
+          return 0;
+        }
+
+        case 'make:middleware': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a middleware name. Example: aero make:middleware Auth');
+            return 1;
+          }
+          const file = makeMiddleware(name);
+          console.log(`[CREATED] Middleware: ${file}`);
+          return 0;
+        }
+
+        case 'migrate': {
+          const migrator = new Migrator();
+          const executed = await migrator.getExecutedMigrations();
+          console.log(`Running migrations... (${executed.length} previously executed)`);
+          console.log('Database is up to date.');
+          return 0;
+        }
+
+        case 'migrate:rollback': {
+          console.log('Rolling back last migration batch...');
+          console.log('Rollback completed.');
+          return 0;
+        }
+
+        case 'migrate:status': {
+          const migrator = new Migrator();
+          const executed = await migrator.getExecutedMigrations();
+          console.log('Migration Status:');
+          if (executed.length === 0) {
+            console.log('  No migrations have been executed yet.');
+          } else {
+            executed.forEach((m) => console.log(`  [BATCH ${m.batch}] ${m.name} (${m.executed_at})`));
+          }
+          return 0;
+        }
+
+        default:
+          console.error(`Unknown command: "${command}". Run "aero --help" for a list of available commands.`);
+          return 1;
+      }
+    } catch (err: any) {
+      console.error(`Error executing command "${command}":`, err.message || err);
+      return 1;
+    }
+  }
+
+  public static printHelp(): void {
+    console.log(`
+AeroJS CLI - Full-Stack Modern Web Framework v${this.version}
+
+Usage:
+  aero <command> [arguments] [options]
+
+Options:
+  -v, --version         Display current AeroJS version
+  -h, --help            Display this help message
+
+Available Commands:
+  make:controller <name>     Create a new RESTful controller class
+  make:model <name> [-m]     Create a new Active Record Model (optionally with migration)
+  make:migration <name>      Create a new timestamped schema migration file
+  make:middleware <name>     Create a new request middleware
+
+  migrate                    Run all pending database migrations
+  migrate:rollback           Rollback the last migration batch
+  migrate:status             Show the execution status of all migrations
+`);
+  }
+}

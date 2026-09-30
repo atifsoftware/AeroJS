@@ -9,6 +9,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "aero": "./bin/aero.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -53,6 +56,10 @@
     "./swagger": {
       "types": "./dist/swagger/index.d.ts",
       "import": "./dist/swagger/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
     }
   },
   "files": [

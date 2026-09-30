@@ -39,3 +39,12 @@ export {
   KnexDatabaseAdapter,
   useKnex,
 } from './knex.js';
+
+export {
+  usePrisma,
+  type PrismaIntegrationOptions,
+} from './prisma.js';
+
+export {
+  useDrizzle,
+} from './drizzle.js';

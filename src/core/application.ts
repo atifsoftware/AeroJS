@@ -118,6 +118,28 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
 
     return this;
   }
+
+  /**
+   * Configures Prisma Client as an ORM in Aero, binding it to IoC container and ctx.prisma.
+   */
+  public usePrisma(prismaClient: any): this {
+    import('../database/prisma.js').then(({ usePrisma: connectPrisma }) => {
+      connectPrisma(prismaClient);
+    });
+    this.container.bind('prisma', () => prismaClient);
+    return this;
+  }
+
+  /**
+   * Configures Drizzle ORM in Aero, binding it to IoC container and ctx.drizzle.
+   */
+  public useDrizzle(drizzleDb: any): this {
+    import('../database/drizzle.js').then(({ useDrizzle: connectDrizzle }) => {
+      connectDrizzle(drizzleDb);
+    });
+    this.container.bind('drizzle', () => drizzleDb);
+    return this;
+  }
 }
 
 export default Aero;

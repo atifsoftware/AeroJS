@@ -116,6 +116,26 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     return (globalThis as any).__AERO_KNEX__;
   }
 
+  /**
+   * Direct access to underlying Prisma Client instance if configured.
+   */
+  public get prisma(): any {
+    if (this.container && this.container.has('prisma')) {
+      return this.container.resolve('prisma');
+    }
+    return (globalThis as any).__AERO_PRISMA__;
+  }
+
+  /**
+   * Direct access to underlying Drizzle ORM instance if configured.
+   */
+  public get drizzle(): any {
+    if (this.container && this.container.has('drizzle')) {
+      return this.container.resolve('drizzle');
+    }
+    return (globalThis as any).__AERO_DRIZZLE__;
+  }
+
   public get headers(): IncomingMessage['headers'] {
     return this.req.headers;
   }
