@@ -4,7 +4,7 @@
   # AeroJS
   ### The Blazing-Fast, Zero-Dependency Full-Stack Web Framework for Node.js
 
-  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/atifsoftware/AeroJS)
+  [![CI](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml/badge.svg)](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml)
   [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aero)
   [![Coverage: 86%+](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](package.json)
   [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
