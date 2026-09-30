@@ -157,6 +157,10 @@ export class Model {
     return { ...this._attributes };
   }
 
+  public get attributes(): Record<string, any> {
+    return this.getAttributes();
+  }
+
   public static getTable(): string {
     if (this.table) return this.table;
     const name = this.name || 'Model';
