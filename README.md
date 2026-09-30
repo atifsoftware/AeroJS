@@ -6,7 +6,7 @@
 
   [![CI](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml/badge.svg)](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml)
   [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aero)
-  [![Coverage: 86%+](https://img.shields.io/badge/coverage-86%25-brightgreen.svg)](package.json)
+  [![Coverage: 88%+](https://img.shields.io/badge/coverage-88%25-brightgreen.svg)](package.json)
   [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
   [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -44,6 +44,10 @@
   15. [Cross-Origin Resource Sharing (CORS)](#15-cross-origin-resource-sharing-cors)
   16. [Server-Side Templating & View Engines (Edge.js, EJS)](#16-server-side-templating--view-engines-edgejs-ejs)
   17. [Full-Stack Modern SPAs with Inertia.js (React & Vue 3)](#17-full-stack-modern-spas-with-inertiajs-react--vue-3)
+  18. [Zero-Dependency JWT Authentication (`jwt`, `jwtAuth`)](#18-zero-dependency-jwt-authentication-jwt-jwtauth)
+  19. [Memory-Safe Rate Limiter (`useRateLimit`, `rateLimit`)](#19-memory-safe-rate-limiter-useratelimit-ratelimit)
+  20. [Security Headers & CSRF Protection (`useSecurityHeaders`, `csrf`)](#20-security-headers--csrf-protection-usesecurityheaders-csrf)
+  21. [Real-Time WebSocket Support (`app.ws`, `AeroWebSocket`)](#21-real-time-websocket-support-appws-aerowebsocket)
 - [Performance, Size & Advantages](#-performance-size--advantages)
 - [Comparison Matrix](#-comparison-matrix)
 - [License](#-license)
@@ -726,6 +730,158 @@ createInertiaApp({
     createRoot(el).render(<App {...props} />);
   },
 });
+```
+
+---
+
+### 18. Zero-Dependency JWT Authentication (`jwt`, `jwtAuth`)
+
+Aero provides native, cryptographic JSON Web Token signing, verification, and authentication middleware built directly on Node.js's `node:crypto`. Zero external packages, zero supply-chain risk.
+
+- **Algorithms:** `HS256`, `HS384`, `HS512`
+- **Timing-Safe:** Immune to timing attacks using `crypto.timingSafeEqual`
+- **Claims Verification:** Automatic validation of `exp` (expiration), `nbf` (not before), `iss` (issuer), `sub` (subject), and `aud` (audience)
+- **Token Extraction:** Automatically extracts tokens from `Authorization: Bearer <token>`, cookies, or custom resolvers
+
+```typescript
+import { Aero, jwt, jwtAuth } from 'aero';
+
+const app = new Aero();
+const SECRET = 'your-super-secret-key-at-least-32-chars';
+
+// 1. Issue a token on login
+app.post('/api/login', (ctx) => {
+  const token = jwt.sign(
+    { userId: 101, role: 'admin' },
+    SECRET,
+    { expiresIn: '2h', issuer: 'my-app' }
+  );
+  ctx.json({ token });
+});
+
+// 2. Protect route groups with jwtAuth middleware
+app.group('/api/admin', (admin) => {
+  admin.use(jwtAuth({ secret: SECRET }));
+
+  admin.get('/dashboard', (ctx) => {
+    // Decoded payload is attached to ctx.state.user
+    ctx.json({ user: ctx.state.user });
+  });
+});
+```
+
+---
+
+### 19. Memory-Safe Rate Limiter (`useRateLimit`, `rateLimit`)
+
+Prevent denial-of-service and brute-force attacks with Aero's built-in sliding/fixed window rate limiter. Includes automatic memory garbage collection of expired IP buckets to prevent memory leak attacks.
+
+- **RFC 6585 Headers:** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`
+- **Customizable:** Configure `windowMs`, `max`, `keyGenerator` (default IP), and `skip` predicates (e.g. skip internal health checks).
+
+```typescript
+import { Aero, rateLimit } from 'aero';
+
+const app = new Aero();
+
+// Global rate limiter via convenience method:
+app.useRateLimit({
+  windowMs: 60_000, // 1 minute
+  max: 100,         // Limit each IP to 100 requests per window
+  message: { error: 'Too many requests. Please slow down!' },
+});
+
+// Or scoped rate limiting for sensitive endpoints:
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,                   // 5 login attempts per 15 minutes
+});
+
+app.post('/api/auth/login', loginLimiter, (ctx) => {
+  // Authentication logic
+});
+```
+
+---
+
+### 20. Security Headers & CSRF Protection (`useSecurityHeaders`, `csrf`)
+
+Secure your HTTP responses with production-grade headers (Helmet-equivalent) and protect against Cross-Site Request Forgery (CSRF) attacks with zero external dependencies.
+
+#### Security Headers (Helmet-like)
+```typescript
+import { Aero } from 'aero';
+
+const app = new Aero();
+
+app.useSecurityHeaders({
+  frameOptions: 'SAMEORIGIN', // Clickjacking defense
+  hsts: { maxAge: 31536000, includeSubDomains: true }, // HSTS
+  contentSecurityPolicy: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", 'https://cdn.example.com'],
+  },
+});
+```
+Automatically sets:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN` / `DENY`
+- `X-XSS-Protection: 0`
+- `Strict-Transport-Security: max-age=...; includeSubDomains`
+- `Referrer-Policy: no-referrer`
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Resource-Policy: same-origin`
+- Strips `X-Powered-By` header
+
+#### CSRF Protection
+```typescript
+import { Aero, csrf } from 'aero';
+
+const app = new Aero();
+app.use(csrf());
+
+app.get('/form', (ctx) => {
+  // ctx.csrfToken() retrieves the cryptographic CSRF token
+  ctx.html(`<form method="POST" action="/submit">
+    <input type="hidden" name="_csrf" value="${ctx.csrfToken()}">
+    <button type="submit">Submit</button>
+  </form>`);
+});
+```
+
+---
+
+### 21. Real-Time WebSocket Support (`app.ws`, `AeroWebSocket`)
+
+Aero provides native RFC 6455 WebSocket support utilizing Node.js's built-in HTTP server `upgrade` event. Create real-time applications without external socket libraries or combine with existing WebSocket packages seamlessly.
+
+```typescript
+import { Aero } from 'aero';
+
+const app = new Aero();
+
+// 1. Regular HTTP route
+app.get('/', (ctx) => ctx.text('Aero Real-Time Server'));
+
+// 2. Real-Time WebSocket route
+app.ws('/ws', (ws, req) => {
+  console.log('⚡ Client connected to /ws');
+
+  // Send message to client
+  ws.send({ event: 'welcome', message: 'Hello from Aero WebSocket!' });
+
+  // Listen for client messages
+  ws.on('message', (message) => {
+    console.log('Received:', message);
+    ws.send({ echo: message });
+  });
+
+  ws.on('close', () => {
+    console.log('Client disconnected');
+  });
+});
+
+app.listen(3000);
 ```
 
 ---

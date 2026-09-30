@@ -1,0 +1,145 @@
+import { describe, it, expect, vi } from 'vitest';
+import { Duplex } from 'node:stream';
+import type { IncomingMessage } from 'node:http';
+import {
+  AeroWebSocket,
+  handleWebSocketUpgrade,
+} from '../src/ws/websocket.js';
+import { Aero } from '../src/core/application.js';
+
+class MockDuplex extends Duplex {
+  public written: Buffer[] = [];
+  public isDestroyed = false;
+
+  public override _write(
+    chunk: any,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void
+  ): void {
+    this.written.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    callback();
+  }
+
+  public override _read(): void {}
+
+  public override destroy(error?: Error): this {
+    this.isDestroyed = true;
+    return super.destroy(error);
+  }
+}
+
+describe('Zero-Dependency WebSocket Module', () => {
+  it('rejects invalid upgrade requests with 400 Bad Request', () => {
+    const socket = new MockDuplex();
+    const req = {
+      headers: {
+        upgrade: 'unknown',
+      },
+    } as unknown as IncomingMessage;
+
+    const ws = handleWebSocketUpgrade(req, socket, Buffer.alloc(0));
+    expect(ws).toBeNull();
+    const writtenStr = Buffer.concat(socket.written).toString('utf-8');
+    expect(writtenStr).toContain('400 Bad Request');
+    expect(socket.isDestroyed).toBe(true);
+  });
+
+  it('performs RFC 6455 handshake successfully', () => {
+    const socket = new MockDuplex();
+    const clientKey = 'dGhlIHNhbXBsZSBub25jZQ==';
+    const req = {
+      headers: {
+        upgrade: 'websocket',
+        'sec-websocket-key': clientKey,
+      },
+    } as unknown as IncomingMessage;
+
+    const ws = handleWebSocketUpgrade(req, socket, Buffer.alloc(0));
+    expect(ws).not.toBeNull();
+    expect(ws).toBeInstanceOf(AeroWebSocket);
+
+    const writtenStr = Buffer.concat(socket.written).toString('utf-8');
+    expect(writtenStr).toContain('101 Switching Protocols');
+    expect(writtenStr).toContain('Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=');
+  });
+
+  it('sends UTF-8 text message to client formatted as RFC 6455 unmasked frame', () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    ws.send('Hello WebSocket');
+    const written = Buffer.concat(socket.written);
+
+    expect(written[0]).toBe(0x81); // Text frame, FIN
+    expect(written[1]).toBe(15); // Length of "Hello WebSocket"
+    expect(written.subarray(2).toString('utf-8')).toBe('Hello WebSocket');
+  });
+
+  it('sends JSON object as text message', () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    ws.send({ event: 'ping' });
+    const written = Buffer.concat(socket.written);
+
+    expect(written[0]).toBe(0x81);
+    expect(written.subarray(2).toString('utf-8')).toBe('{"event":"ping"}');
+  });
+
+  it('parses masked client text frame and emits message event', async () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    const messagePromise = new Promise<string>((resolve) => {
+      ws.on('message', (msg) => resolve(msg));
+    });
+
+    // Construct a client masked frame:
+    // "Hi" -> bytes [0x48, 0x69]
+    // Mask key: [0x12, 0x34, 0x56, 0x78]
+    // Masked bytes: [0x48 ^ 0x12, 0x69 ^ 0x34] = [0x5a, 0x5d]
+    const frame = Buffer.from([
+      0x81, // FIN + Text opcode (1)
+      0x82, // Masked (0x80) + Length 2 (0x02)
+      0x12, 0x34, 0x56, 0x78, // Mask key
+      0x5a, 0x5d, // Masked payload
+    ]);
+
+    socket.emit('data', frame);
+
+    const message = await messagePromise;
+    expect(message).toBe('Hi');
+  });
+
+  it('handles client ping frame and responds with pong', async () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    const pingPromise = new Promise<void>((resolve) => {
+      ws.on('ping', () => resolve());
+    });
+
+    // Client Ping frame: 0x89 0x80 (masked, length 0) + 4 bytes mask
+    const pingFrame = Buffer.from([0x89, 0x80, 0x00, 0x00, 0x00, 0x00]);
+    socket.emit('data', pingFrame);
+
+    await pingPromise;
+
+    const written = Buffer.concat(socket.written);
+    expect(written[0]).toBe(0x8a); // Pong opcode
+    expect(written[1]).toBe(0x00);
+  });
+
+  it('gracefully closes the connection with code and reason', () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    ws.close(1000, 'Bye');
+    expect(ws.isClosed).toBe(true);
+
+    const written = Buffer.concat(socket.written);
+    expect(written[0]).toBe(0x88); // Close opcode
+    expect(written.readUInt16BE(2)).toBe(1000);
+    expect(written.subarray(4).toString('utf-8')).toBe('Bye');
+  });
+});

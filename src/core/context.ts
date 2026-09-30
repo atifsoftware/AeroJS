@@ -108,6 +108,10 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     return this;
   }
 
+  public setCookie(name: string, value: string, options?: CookieOptions): this {
+    return this.cookie(name, value, options);
+  }
+
   public clearCookie(name: string, options?: CookieOptions): this {
     this.res.clearCookie(name, options);
     return this;

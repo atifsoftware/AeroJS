@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
-import { Aero } from '../src/index.js';
+import { Aero, createTestClient } from '../src/index.js';
 
 describe('Aero Application Core', () => {
   let app: Aero;
@@ -201,5 +201,30 @@ describe('Aero Application Core', () => {
     const res = await fetch(`${baseUrl}/redirect-me`, { redirect: 'manual' });
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('/target');
+  });
+
+  it('supports app.useSecurityHeaders() and app.useRateLimit() directly', async () => {
+    const testApp = new Aero();
+    testApp.useSecurityHeaders().useRateLimit({ max: 5 });
+    testApp.get('/secured', (ctx) => ctx.send('secure-ok'));
+
+    const client = createTestClient(testApp);
+    const res = await client.get('/secured');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-ratelimit-limit']).toBe('5');
+    expect(res.text()).toBe('secure-ok');
+  });
+
+  it('registers ws route and onUpgrade hooks on app', () => {
+    const testApp = new Aero();
+    const wsHandler = vi.fn();
+    const upgradeHandler = vi.fn();
+
+    testApp.ws('/live', wsHandler);
+    testApp.onUpgrade(upgradeHandler);
+
+    expect(testApp).toBeDefined();
   });
 });

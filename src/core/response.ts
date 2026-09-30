@@ -64,6 +64,14 @@ export class AeroResponse {
     return this;
   }
 
+  public setHeader(name: string, value: OutgoingHttpHeader): this {
+    return this.set(name, value);
+  }
+
+  public getHeader(name: string): OutgoingHttpHeader | undefined {
+    return this.get(name);
+  }
+
   public get(name: string): OutgoingHttpHeader | undefined {
     return this.raw.getHeader(name);
   }
@@ -89,6 +97,10 @@ export class AeroResponse {
     this._cookieHeaders.push(cookieStr);
     this.raw.setHeader('Set-Cookie', this._cookieHeaders);
     return this;
+  }
+
+  public setCookie(name: string, value: string, options: CookieOptions = {}): this {
+    return this.cookie(name, value, options);
   }
 
   public clearCookie(name: string, options: CookieOptions = {}): this {

@@ -17,6 +17,10 @@
     "./testing": {
       "types": "./dist/testing/test-client.d.ts",
       "import": "./dist/testing/test-client.js"
+    },
+    "./security": {
+      "types": "./dist/security/index.d.ts",
+      "import": "./dist/security/index.js"
     }
   },
   "files": [

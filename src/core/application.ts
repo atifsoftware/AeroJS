@@ -11,6 +11,7 @@ import {
   type ServerResponse,
   type RequestListener,
 } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { AeroRequest } from './request.js';
 import { AeroResponse } from './response.js';
 import { AeroContext, type DefaultState } from './context.js';
@@ -41,10 +42,18 @@ import { serveStatic, type StaticOptions } from '../static/static.js';
 import { cors, type CorsOptions } from '../middleware/cors.js';
 import { viewPlugin, type ViewDriver, type ViewEngine } from '../views/view.js';
 import { inertiaPlugin, type InertiaConfig } from '../inertia/inertia.js';
+import { rateLimit, type RateLimitOptions } from '../security/rate-limiter.js';
+import { securityHeaders, type SecurityHeadersOptions } from '../security/headers.js';
+import {
+  handleWebSocketUpgrade,
+  type WebSocketUpgradeHandler,
+} from '../ws/websocket.js';
 import { HookRunner, type HookMap, type HookName } from './hooks.js';
 export { type HookMap, type HookName } from './hooks.js';
 
 export class Aero<State = DefaultState> {
+  private readonly wsRoutes = new Map<string, WebSocketUpgradeHandler>();
+  private readonly upgradeHandlers: ((req: IncomingMessage, socket: Duplex, head: Buffer) => void)[] = [];
   public readonly configOptions: AeroOptions;
   public readonly namedMiddleware = new NamedMiddlewareRegistry<State>();
   public readonly router: Router<State>;
@@ -180,6 +189,46 @@ export class Aero<State = DefaultState> {
 
   public useInertia(config?: InertiaConfig): this {
     return this.use(inertiaPlugin(config));
+  }
+
+  public useRateLimit(options?: RateLimitOptions): this {
+    return this.use(rateLimit<State>(options));
+  }
+
+  public useSecurityHeaders(options?: SecurityHeadersOptions): this {
+    return this.use(securityHeaders<State>(options));
+  }
+
+  public ws(path: string, handler: WebSocketUpgradeHandler): this {
+    this.wsRoutes.set(normalizePath(path), handler);
+    return this;
+  }
+
+  public onUpgrade(handler: (req: IncomingMessage, socket: Duplex, head: Buffer) => void): this {
+    this.upgradeHandlers.push(handler);
+    return this;
+  }
+
+  public handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const rawUrl = req.url ? req.url.split('?')[0] : '/';
+    const cleanUrl = normalizePath(rawUrl || '/');
+
+    const wsHandler = this.wsRoutes.get(cleanUrl);
+    if (wsHandler) {
+      const ws = handleWebSocketUpgrade(req, socket, head);
+      if (ws) {
+        void wsHandler(ws, req);
+      }
+      return;
+    }
+
+    for (const handler of this.upgradeHandlers) {
+      handler(req, socket, head);
+      return;
+    }
+
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
   }
 
   public addHook<K extends HookName>(name: K, handler: HookMap<State>[K]): this {
@@ -556,6 +605,9 @@ export class Aero<State = DefaultState> {
   ): Server {
     const server = createServer(this.callback());
     this.server = server;
+    server.on('upgrade', (req, socket, head) => {
+      this.handleUpgrade(req, socket, head);
+    });
 
     let host = '0.0.0.0';
     let cb = callback;
