@@ -139,6 +139,30 @@ export {
   type FileValidationRules,
 } from './storage/index.js';
 export {
+  Queue,
+  QueueManager,
+  Job,
+  QueueWorker,
+  MemoryQueueDriver,
+  DatabaseQueueDriver,
+  type QueueDriver,
+  type QueuedJobRecord,
+  type PushOptions,
+  type WorkerOptions,
+  type QueueConfig,
+} from './queue/index.js';
+export {
+  Mail,
+  MailManager,
+  MailMessage,
+  MemoryMailDriver,
+  LogMailDriver,
+  type MailDriver,
+  type SentMailResult,
+  type MailAttachment,
+  type MailerConfig,
+} from './mail/index.js';
+export {
   parseBody,
   readRawBody,
   parseUrlEncoded,

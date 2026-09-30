@@ -77,6 +77,10 @@ export class Logger {
     this.log(this.WARNING, message, context);
   }
 
+  public static warn(message: string, context: Record<string, unknown> = {}): void {
+    this.log(this.WARNING, message, context);
+  }
+
   public static notice(message: string, context: Record<string, unknown> = {}): void {
     this.log(this.NOTICE, message, context);
   }
