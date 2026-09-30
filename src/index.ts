@@ -127,6 +127,18 @@ export {
   type SSREngineOptions,
 } from './ssr/index.js';
 export {
+  Storage,
+  StorageManager,
+  UploadedFile,
+  LocalStorageDriver,
+  MemoryStorageDriver,
+  S3StorageDriver,
+  type StorageDriver,
+  type StorageConfig,
+  type StorageDiskConfig,
+  type FileValidationRules,
+} from './storage/index.js';
+export {
   parseBody,
   readRawBody,
   parseUrlEncoded,

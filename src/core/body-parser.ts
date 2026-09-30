@@ -100,6 +100,17 @@ export async function parseBody(
     return parseUrlEncoded(textContent);
   }
 
+  if (mimeType === 'multipart/form-data') {
+    const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
+    const boundary = boundaryMatch ? boundaryMatch[1] || boundaryMatch[2] : null;
+    if (boundary) {
+      const { parseMultipartBuffer } = await import('../storage/multipart.js');
+      const { fields, files } = parseMultipartBuffer(rawBuffer, boundary);
+      (req as any).files = files;
+      return fields;
+    }
+  }
+
   if (mimeType.startsWith('text/')) {
     return textContent;
   }

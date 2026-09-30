@@ -26,6 +26,7 @@ export class AeroRequest {
   public readonly query: ParsedQuery;
   public params: RouteParams;
   public body: unknown;
+  public files: Record<string, any>;
   public readonly headers: IncomingHttpHeaders;
   public readonly header: IncomingHttpHeaders;
 
@@ -41,6 +42,7 @@ export class AeroRequest {
     this.header = raw.headers;
     this.params = {};
     this.body = undefined;
+    this.files = {};
 
     const parsedUrl = new URL(this.url, 'http://localhost');
     this.path = parsedUrl.pathname;

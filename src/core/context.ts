@@ -89,6 +89,23 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     this.req.body = val;
   }
 
+  /**
+   * Retrieves the first uploaded file matching fieldName.
+   */
+  public file(name: string): any {
+    return this.req.files[name]?.[0];
+  }
+
+  /**
+   * Retrieves all uploaded files, optionally filtered by fieldName.
+   */
+  public files(name?: string): any[] {
+    if (name) {
+      return this.req.files[name] || [];
+    }
+    return Object.values(this.req.files).flat();
+  }
+
   public get headers(): IncomingMessage['headers'] {
     return this.req.headers;
   }

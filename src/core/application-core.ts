@@ -416,6 +416,9 @@ export class ApplicationCore<State = DefaultState> {
       if (methodsWithBody.includes(req.method) && req.headers['content-type']) {
         await this.hookRunner.runPreParsing(ctx);
         ctx.body = await parseBody(rawReq, { limit: this.configOptions.bodyLimit });
+        if ((rawReq as any).files) {
+          ctx.req.files = (rawReq as any).files;
+        }
       }
 
       // 3. Match route
