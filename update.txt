@@ -1,0 +1,1848 @@
+# 🚀 MASTER DEVELOPMENT PROMPT
+
+# Build "Aero" — A Production-Grade Modern Node.js Web Framework
+
+You are a **Senior Node.js / TypeScript Framework Architect and Core Runtime Engineer**.
+
+Your task is to design and build a complete production-quality web framework called **Aero** from scratch.
+
+Do not treat this as a demo project or tutorial.
+
+Build it as a **real reusable framework/library** with clean architecture, strict TypeScript types, predictable APIs, comprehensive tests, documentation, performance-conscious implementation, and future extensibility.
+
+---
+
+# 1. PROJECT IDENTITY
+
+**Framework Name:** Aero
+
+**Purpose:**
+
+Aero is a minimal, fast, type-safe and elegant Node.js web framework designed for:
+
+* REST APIs
+* Web applications
+* Backend services
+* SaaS applications
+* Business applications
+* ERP systems
+* Microservices
+* Internal enterprise APIs
+
+### Design Philosophy
+
+Combine the best architectural ideas from:
+
+* Express — simplicity
+* Koa — middleware composition
+* Fastify — lifecycle hooks, schema-oriented architecture and performance
+* Modern TypeScript — strong type safety
+* Node.js native APIs — minimal dependencies
+
+Do NOT copy source code from existing frameworks.
+
+Study their architectural concepts only and implement Aero independently.
+
+---
+
+# 2. CORE PRINCIPLES
+
+Aero must follow these principles:
+
+1. TypeScript-first
+2. Strict type safety
+3. ESM-only
+4. Node.js 20+
+5. Zero runtime dependencies in core
+6. Minimal abstraction overhead
+7. Predictable request lifecycle
+8. Explicit error handling
+9. Extensible plugin architecture
+10. Testability
+11. Performance-conscious design
+12. Excellent developer experience
+13. Backward-compatible public APIs
+14. No unnecessary magic
+
+---
+
+# 3. RUNTIME REQUIREMENTS
+
+Runtime:
+
+```text
+Node.js >= 20
+```
+
+Language:
+
+```text
+TypeScript
+```
+
+Module system:
+
+```text
+ESM
+```
+
+Package:
+
+```json
+"type": "module"
+```
+
+Core runtime dependencies:
+
+```text
+ZERO
+```
+
+Only Node.js built-in APIs may be used by the framework core.
+
+Development dependencies may include:
+
+```text
+typescript
+tsx
+@types/node
+```
+
+Additional development/testing dependencies may be introduced only when justified.
+
+Do NOT introduce runtime dependencies without explicit architectural justification.
+
+---
+
+# 4. DEVELOPMENT PHILOSOPHY
+
+Build Aero incrementally.
+
+Never generate the entire framework blindly in one step.
+
+Work through the following phases:
+
+```text
+Phase 1
+Core Foundation
+
+        ↓
+
+Phase 2
+HTTP Utilities & Body Parsing
+
+        ↓
+
+Phase 3
+Lifecycle Hooks & Validation
+
+        ↓
+
+Phase 4
+Plugin Architecture
+
+        ↓
+
+Phase 5
+Performance & Production Features
+
+        ↓
+
+Phase 6
+Security & Observability
+
+        ↓
+
+Phase 7
+Documentation & Release Hardening
+```
+
+After EVERY phase:
+
+```text
+npm run build
+npm test
+```
+
+must be executed.
+
+Never claim that a test passed unless the command was actually executed and its output confirms success.
+
+Fix all failures before moving to the next phase.
+
+---
+
+# 5. INITIAL PROJECT STRUCTURE
+
+Start with:
+
+```text
+aero/
+│
+├── src/
+│   ├── application.ts
+│   ├── router.ts
+│   ├── context.ts
+│   ├── request.ts
+│   ├── response.ts
+│   ├── middleware.ts
+│   ├── hooks.ts
+│   ├── body-parser.ts
+│   ├── errors.ts
+│   ├── validation.ts
+│   ├── plugin.ts
+│   ├── types.ts
+│   └── index.ts
+│
+├── examples/
+│   ├── basic.ts
+│   └── advanced.ts
+│
+├── tests/
+│   ├── router.test.ts
+│   ├── middleware.test.ts
+│   ├── context.test.ts
+│   ├── request.test.ts
+│   ├── response.test.ts
+│   ├── application.test.ts
+│   ├── hooks.test.ts
+│   ├── validation.test.ts
+│   └── plugin.test.ts
+│
+├── package.json
+├── tsconfig.json
+├── .gitignore
+├── .npmignore
+├── LICENSE
+└── README.md
+```
+
+Later phases may add directories such as:
+
+```text
+benchmarks/
+docs/
+```
+
+Do NOT violate the initial structure unnecessarily.
+
+New directories may only be introduced when required by a later phase.
+
+---
+
+# 6. ARCHITECTURAL LAYERS
+
+Aero must be internally organized around these layers:
+
+```text
+                    ┌─────────────────────┐
+                    │     Application     │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │    Lifecycle        │
+                    │      Hooks          │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │      Router         │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │    Middleware       │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │       Handler       │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │     Response        │
+                    └─────────────────────┘
+```
+
+Keep responsibilities separated.
+
+Do not put routing logic inside response handling.
+
+Do not put body parsing inside the router.
+
+Do not put plugin management inside the request object.
+
+---
+
+# 7. REQUEST LIFECYCLE
+
+The request lifecycle MUST follow this logical order:
+
+```text
+Incoming HTTP Request
+        ↓
+Create AeroContext
+        ↓
+onRequest hooks
+        ↓
+Route Matching
+        ↓
+Populate route params
+        ↓
+Body Parsing
+        ↓
+preParsing hooks
+        ↓
+preValidation hooks
+        ↓
+Schema Validation
+        ↓
+preHandler hooks
+        ↓
+Global Middleware
+        ↓
+Route Middleware
+        ↓
+Route Handler
+        ↓
+preSerialization hooks
+        ↓
+Serialize Response
+        ↓
+onSend hooks
+        ↓
+Send HTTP Response
+        ↓
+onResponse hooks
+```
+
+Error at any stage:
+
+```text
+             ↓
+        Error Handler
+             ↓
+      onError hooks
+             ↓
+      HTTP Error Response
+```
+
+IMPORTANT:
+
+Route matching MUST happen before parameter validation because:
+
+```text
+/users/:id
+```
+
+must populate:
+
+```typescript
+ctx.params.id
+```
+
+before validating route parameters.
+
+---
+
+# 8. PHASE 1 — CORE FOUNDATION
+
+Implement:
+
+```text
+errors.ts
+types.ts
+request.ts
+response.ts
+context.ts
+middleware.ts
+router.ts
+application.ts
+index.ts
+```
+
+---
+
+## 8.1 Error System
+
+Create:
+
+```typescript
+export class AeroError extends Error
+```
+
+Properties:
+
+```typescript
+status: number
+code?: string
+details?: unknown
+```
+
+Create:
+
+```typescript
+NotFoundError
+BadRequestError
+UnauthorizedError
+ForbiddenError
+InternalError
+MethodNotAllowedError
+```
+
+Default status codes:
+
+```text
+400 Bad Request
+401 Unauthorized
+403 Forbidden
+404 Not Found
+405 Method Not Allowed
+500 Internal Server Error
+```
+
+Errors must preserve:
+
+* message
+* status
+* code
+* details
+* cause when available
+
+Never expose stack traces in production unless debug mode is explicitly enabled.
+
+---
+
+# 9. REQUEST API
+
+Create:
+
+```typescript
+class AeroRequest
+```
+
+It wraps Node.js:
+
+```typescript
+IncomingMessage
+```
+
+Expose:
+
+```typescript
+method
+url
+path
+query
+params
+headers
+header
+body
+raw
+```
+
+Methods:
+
+```typescript
+get(name: string): string | undefined
+```
+
+Header lookup must be case-insensitive.
+
+Query parsing must correctly handle:
+
+```text
+?page=2
+?search=hello
+?tag=a&tag=b
+```
+
+Do not silently convert arbitrary values into unsafe types.
+
+---
+
+# 10. RESPONSE API
+
+Create:
+
+```typescript
+class AeroResponse
+```
+
+Wrap:
+
+```typescript
+ServerResponse
+```
+
+Methods:
+
+```typescript
+status(code): this
+
+set(name, value): this
+
+get(name): string | undefined
+
+json(data): void
+
+text(data): void
+
+html(data): void
+
+send(data): void
+
+redirect(url, status?): void
+
+cookie(name, value, options?): this
+```
+
+Properties:
+
+```typescript
+headersSent
+```
+
+Supported response values:
+
+```text
+string
+Buffer
+Uint8Array
+object
+null
+```
+
+Response behavior:
+
+```text
+string      → text/plain
+object      → application/json
+Buffer      → application/octet-stream
+Uint8Array  → application/octet-stream
+html()      → text/html
+```
+
+Never send a response twice.
+
+If response headers are already sent, safely prevent duplicate response writes.
+
+---
+
+# 11. COOKIE API
+
+Cookie options must support:
+
+```typescript
+httpOnly
+secure
+sameSite
+maxAge
+expires
+path
+domain
+```
+
+Example:
+
+```typescript
+ctx.cookie("session", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 86400
+});
+```
+
+Expose parsed request cookies through:
+
+```typescript
+ctx.cookies
+```
+
+Do not implement signed/encrypted cookies until a later phase.
+
+---
+
+# 12. CONTEXT
+
+Create:
+
+```typescript
+class AeroContext
+```
+
+Expose:
+
+```typescript
+ctx.req
+ctx.res
+
+ctx.method
+ctx.path
+ctx.query
+ctx.params
+ctx.body
+ctx.headers
+
+ctx.state
+```
+
+Response helpers:
+
+```typescript
+ctx.status()
+ctx.set()
+ctx.json()
+ctx.text()
+ctx.html()
+ctx.send()
+ctx.redirect()
+ctx.cookie()
+```
+
+Error helper:
+
+```typescript
+ctx.throw(status, message)
+```
+
+`ctx.state` must be request-scoped.
+
+Never share mutable request state globally.
+
+---
+
+# 13. MIDDLEWARE
+
+Implement Koa-style onion middleware.
+
+Types:
+
+```typescript
+type NextFunction = () => Promise<void>;
+
+type Middleware =
+    (
+        ctx: AeroContext,
+        next: NextFunction
+    ) => void | Promise<void>;
+```
+
+Example:
+
+```typescript
+app.use(async (ctx, next) => {
+    console.log("before");
+
+    await next();
+
+    console.log("after");
+});
+```
+
+Execution order:
+
+```text
+A before
+B before
+handler
+B after
+A after
+```
+
+Guard against:
+
+```typescript
+await next();
+await next();
+```
+
+Calling `next()` twice must produce an error.
+
+Synchronous exceptions must be converted into rejected promises.
+
+---
+
+# 14. ROUTER
+
+Implement:
+
+```typescript
+class Router
+```
+
+Methods:
+
+```typescript
+add(method, path, handlers)
+
+match(method, path)
+
+hasPath(path)
+```
+
+Supported:
+
+```text
+/users
+/users/:id
+/users/:id/posts/:postId
+/files/*
+```
+
+Requirements:
+
+* named parameters
+* wildcard
+* trailing slash tolerance
+* URL decoding
+* method matching
+* 404 detection
+* 405 detection
+
+Example:
+
+```text
+/users/100/posts/50
+```
+
+must produce:
+
+```typescript
+{
+    id: "100",
+    postId: "50"
+}
+```
+
+Do not use a naive `split("/")` router if it prevents future optimization.
+
+The routing abstraction must allow replacing regex routing with a radix-tree implementation in a later phase.
+
+---
+
+# 15. APPLICATION API
+
+Create:
+
+```typescript
+class Aero
+```
+
+Options:
+
+```typescript
+interface AeroOptions {
+    debug?: boolean;
+    disableDefault404?: boolean;
+    bodyLimit?: number;
+    trustProxy?: boolean;
+}
+```
+
+Methods:
+
+```typescript
+use(fn): this
+
+get(path, ...handlers): this
+
+post(path, ...handlers): this
+
+put(path, ...handlers): this
+
+patch(path, ...handlers): this
+
+delete(path, ...handlers): this
+
+head(path, ...handlers): this
+
+options(path, ...handlers): this
+
+all(path, ...handlers): this
+
+onError(handler): this
+
+callback(): RequestListener
+
+listen(port, callback?): Server
+
+close(): Promise<void>
+```
+
+---
+
+# 16. 404 / 405 BEHAVIOR
+
+If no route exists:
+
+```text
+404 Not Found
+```
+
+If path exists but HTTP method is unsupported:
+
+```text
+405 Method Not Allowed
+```
+
+Include:
+
+```text
+Allow: GET, POST, PUT
+```
+
+when appropriate.
+
+---
+
+# 17. HEAD / OPTIONS
+
+Implement automatic behavior.
+
+HEAD:
+
+```text
+Same route semantics as GET
+No response body
+```
+
+OPTIONS:
+
+Return allowed methods.
+
+Do not invoke unnecessary application handlers for automatic OPTIONS responses.
+
+---
+
+# 18. PHASE 2 — BODY PARSING
+
+Implement stream-based body parsing.
+
+Supported:
+
+```text
+application/json
+application/x-www-form-urlencoded
+text/plain
+```
+
+Requirements:
+
+* streaming
+* configurable size limit
+* malformed JSON detection
+* aborted request handling
+* invalid content handling
+* content-length awareness
+* safe memory usage
+
+Default:
+
+```text
+1 MB
+```
+
+Example:
+
+```typescript
+const app = new Aero({
+    bodyLimit: 5 * 1024 * 1024
+});
+```
+
+Never blindly accumulate unlimited request bodies.
+
+---
+
+# 19. PHASE 2 — SUB-ROUTERS
+
+Support:
+
+```typescript
+const users = new Router();
+
+users.get("/", handler);
+users.get("/:id", handler);
+
+app.route("/users", users);
+```
+
+Nested routing must preserve:
+
+```text
+params
+middleware
+hooks
+```
+
+without duplicating router logic.
+
+---
+
+# 20. PHASE 3 — LIFECYCLE HOOKS
+
+Implement:
+
+```text
+onRequest
+preParsing
+preValidation
+preHandler
+preSerialization
+onSend
+onResponse
+onError
+```
+
+API:
+
+```typescript
+app.addHook("onRequest", handler);
+```
+
+Hooks must execute deterministically.
+
+Document:
+
+* execution order
+* error behavior
+* async behavior
+* route-specific vs global scope
+
+---
+
+# 21. VALIDATION
+
+Implement a schema abstraction.
+
+Support validation of:
+
+```text
+body
+query
+params
+headers
+```
+
+Design API similar to:
+
+```typescript
+app.post(
+    "/users",
+    {
+        schema: {
+            body: UserCreateSchema,
+            params: UserParamsSchema,
+            query: UserQuerySchema,
+            response: UserResponseSchema
+        }
+    },
+    handler
+);
+```
+
+The validation engine must:
+
+* reject invalid input
+* return structured validation errors
+* never throw obscure internal exceptions
+* support reusable schemas
+* be type-safe
+
+Do not introduce a runtime validation dependency into Aero core.
+
+---
+
+# 22. RESPONSE SERIALIZATION
+
+Implement an internal serializer.
+
+Requirements:
+
+* predictable JSON serialization
+* avoid unnecessary work
+* support response schemas
+* prevent circular JSON crashes from becoming uncontrolled errors
+* provide useful serialization errors
+
+Do NOT claim to outperform Fastify unless benchmark results actually prove it.
+
+---
+
+# 23. DECORATORS
+
+Implement:
+
+```typescript
+app.decorate(name, value)
+
+app.decorateRequest(name, value)
+
+app.decorateReply(name, value)
+```
+
+Rules:
+
+* duplicate decoration should be detected
+* prototype pollution must be prevented
+* reserved names must be protected
+* TypeScript typing should remain predictable
+
+---
+
+# 24. PHASE 4 — PLUGIN SYSTEM
+
+Implement:
+
+```typescript
+app.register(plugin, options?)
+```
+
+Define a plugin type:
+
+```typescript
+type AeroPlugin<Options = unknown> =
+    (
+        app: Aero,
+        options: Options
+    ) => void | Promise<void>;
+```
+
+Plugins must support:
+
+* encapsulation
+* lifecycle hooks
+* routes
+* middleware
+* decorators
+* configuration
+
+Example:
+
+```typescript
+const authPlugin: AeroPlugin<AuthOptions> =
+    async (app, options) => {
+        // plugin setup
+    };
+
+app.register(authPlugin, {
+    secret: "..."
+});
+```
+
+Plugin registration order must be deterministic.
+
+---
+
+# 25. PLUGIN ARCHITECTURE
+
+Target architecture:
+
+```text
+Aero Application
+│
+├── Core
+│
+├── Auth Plugin
+│   ├── middleware
+│   └── routes
+│
+├── Customer Plugin
+│   └── routes
+│
+├── Accounting Plugin
+│   └── routes
+│
+└── Inventory Plugin
+    └── routes
+```
+
+The core framework must not contain ERP-specific logic.
+
+Aero should provide infrastructure; applications provide business logic.
+
+---
+
+# 26. PHASE 5 — PERFORMANCE
+
+Implement:
+
+```text
+Radix-tree router
+```
+
+or another efficient route lookup mechanism.
+
+Performance goals:
+
+* low allocation
+* minimal wrapper overhead
+* efficient header access
+* efficient route matching
+* safe body parsing
+* predictable middleware execution
+
+Add:
+
+```text
+benchmarks/
+```
+
+Benchmark against:
+
+```text
+Node http
+Express
+Koa
+Fastify
+Aero
+```
+
+Do not manipulate benchmarks.
+
+Document:
+
+* hardware
+* Node version
+* benchmark methodology
+* requests/sec
+* latency
+* concurrency
+* payload size
+
+Never claim Aero is faster unless measured.
+
+---
+
+# 27. PHASE 6 — PRODUCTION FEATURES
+
+Add infrastructure-level features.
+
+## Logging
+
+Provide structured logging interfaces.
+
+Example:
+
+```typescript
+ctx.log.info("User created", {
+    userId
+});
+```
+
+Do not force a specific external logging library into core.
+
+---
+
+## Request ID
+
+Every request should optionally receive:
+
+```text
+x-request-id
+```
+
+If incoming request contains one, validate and propagate safely.
+
+Otherwise generate one.
+
+---
+
+## Health Check
+
+Allow:
+
+```text
+GET /health
+```
+
+through normal routing.
+
+Do not hardcode application routes into the framework.
+
+---
+
+## Graceful Shutdown
+
+Support:
+
+```text
+SIGTERM
+SIGINT
+```
+
+Gracefully:
+
+1. stop accepting new connections
+2. allow active requests to finish
+3. close server
+4. resolve close promise
+
+---
+
+# 28. SECURITY
+
+Implement safe defaults.
+
+Protect against:
+
+* header injection
+* prototype pollution
+* malformed HTTP input
+* oversized request bodies
+* duplicate response sending
+* unsafe cookie generation
+* path traversal in static-file functionality
+* unhandled promise rejection
+* information leakage
+
+Never expose stack traces unless:
+
+```typescript
+debug: true
+```
+
+is enabled.
+
+---
+
+# 29. FUTURE EXTENSION POINTS
+
+Do not implement all of these in core yet.
+
+Design extension points for:
+
+```text
+Database adapters
+Authentication
+Authorization
+RBAC
+Caching
+Queues
+WebSockets
+File uploads
+Static files
+Compression
+CORS
+CSRF
+Rate limiting
+Sessions
+OpenAPI
+Metrics
+Tracing
+```
+
+The framework should be able to support these through plugins or adapters.
+
+---
+
+# 30. DATABASE ARCHITECTURE
+
+Do NOT add a database dependency to Aero core.
+
+Instead define an optional adapter concept:
+
+```typescript
+interface DatabaseAdapter {
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+}
+```
+
+Future integrations may support:
+
+```text
+MySQL
+PostgreSQL
+SQLite
+SQL Server
+MongoDB
+```
+
+Aero must remain database-agnostic.
+
+---
+
+# 31. ERROR RESPONSE FORMAT
+
+Default JSON error:
+
+```json
+{
+    "error": {
+        "status": 404,
+        "code": "NOT_FOUND",
+        "message": "Route not found"
+    }
+}
+```
+
+Validation error example:
+
+```json
+{
+    "error": {
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "message": "Validation failed",
+        "details": []
+    }
+}
+```
+
+Do not leak internal stack traces by default.
+
+---
+
+# 32. TYPESCRIPT REQUIREMENTS
+
+Use:
+
+```json
+{
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true
+}
+```
+
+Use ESM:
+
+```text
+module: NodeNext
+moduleResolution: NodeNext
+```
+
+Generate:
+
+```text
+.d.ts
+.js
+.js.map
+.d.ts.map
+```
+
+No `any` in public API.
+
+Avoid `any` internally whenever reasonably possible.
+
+If `unknown` is appropriate, use `unknown`.
+
+---
+
+# 33. PACKAGE.JSON
+
+Target:
+
+```json
+{
+    "name": "aero",
+    "version": "0.1.0",
+    "description": "A minimal, fast and type-safe Node.js web framework",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "build": "tsc",
+        "test": "node --test --import tsx tests/**/*.test.ts",
+        "dev": "tsx watch examples/basic.ts",
+        "example": "tsx examples/basic.ts",
+        "example:advanced": "tsx examples/advanced.ts",
+        "prepublishOnly": "npm run build && npm test"
+    }
+}
+```
+
+Adjust versions to current compatible versions when actually creating the project.
+
+---
+
+# 34. TESTING
+
+Use Node.js built-in test runner where practical.
+
+Test:
+
+## Router
+
+* static routes
+* parameters
+* multiple parameters
+* wildcard
+* trailing slash
+* URL decoding
+* 404
+* 405
+* method matching
+
+## Middleware
+
+* onion execution
+* async middleware
+* sync errors
+* async errors
+* next twice guard
+* middleware order
+
+## Request
+
+* headers
+* query
+* params
+* body
+* cookies
+
+## Response
+
+* JSON
+* text
+* HTML
+* Buffer
+* status
+* headers
+* redirect
+* cookies
+* duplicate send prevention
+
+## Application
+
+* GET
+* POST
+* PUT
+* PATCH
+* DELETE
+* HEAD
+* OPTIONS
+* 404
+* 405
+* error handling
+
+## Hooks
+
+Test every lifecycle stage.
+
+## Validation
+
+Test:
+
+* valid request
+* invalid request
+* body
+* query
+* params
+* headers
+* response schema
+
+## Plugins
+
+Test:
+
+* registration
+* options
+* order
+* encapsulation
+* decorators
+* hooks
+* routes
+
+Target:
+
+```text
+>80% meaningful coverage
+```
+
+Do not optimize for coverage percentage alone.
+
+---
+
+# 35. INTEGRATION TESTING
+
+Create actual HTTP integration tests.
+
+Example:
+
+```typescript
+const server = app.listen(0);
+```
+
+Retrieve the actual assigned port.
+
+Use Node's native:
+
+```text
+fetch()
+```
+
+to make requests.
+
+Test the entire request lifecycle.
+
+Do not test only internal functions.
+
+---
+
+# 36. EXAMPLE APPLICATION
+
+Create:
+
+```text
+examples/basic.ts
+```
+
+It must demonstrate:
+
+```text
+GET /
+GET /hello/:name
+GET /users/:id
+POST /users
+404
+405
+middleware
+error handling
+```
+
+Create:
+
+```text
+examples/advanced.ts
+```
+
+demonstrating:
+
+```text
+hooks
+validation
+plugins
+decorators
+nested routes
+error handling
+```
+
+Server should default to:
+
+```text
+http://localhost:3000
+```
+
+---
+
+# 37. README
+
+README must include:
+
+1. Project introduction
+2. Philosophy
+3. Installation
+4. Quick start
+5. Routing
+6. Parameters
+7. Middleware
+8. Request API
+9. Response API
+10. Error handling
+11. Body parsing
+12. Hooks
+13. Validation
+14. Plugins
+15. Decorators
+16. Security
+17. Testing
+18. Benchmarks
+19. Architecture
+20. API reference
+21. Examples
+22. License
+
+Do not invent benchmark numbers.
+
+Use real output only.
+
+---
+
+# 38. DOCUMENTATION QUALITY
+
+Every public:
+
+```text
+class
+interface
+type
+function
+method
+property
+```
+
+must have useful JSDoc.
+
+JSDoc should explain:
+
+* purpose
+* parameters
+* return value
+* errors
+* usage where useful
+
+Avoid meaningless comments such as:
+
+```typescript
+// get user
+```
+
+Prefer:
+
+```typescript
+/**
+ * Returns the route parameter captured for the current request.
+ */
+```
+
+---
+
+# 39. DEFINITION OF DONE
+
+The project is complete only when:
+
+```text
+[ ] npm install succeeds
+[ ] npm run build succeeds
+[ ] npm test succeeds
+[ ] basic example starts
+[ ] advanced example starts
+[ ] HTTP integration tests pass
+[ ] router tests pass
+[ ] middleware tests pass
+[ ] hooks tests pass
+[ ] validation tests pass
+[ ] plugin tests pass
+[ ] 404 works
+[ ] 405 works
+[ ] HEAD works
+[ ] OPTIONS works
+[ ] body limits work
+[ ] errors are handled
+[ ] no public any types
+[ ] public APIs have JSDoc
+[ ] README is complete
+[ ] package exports are valid
+[ ] graceful shutdown works
+```
+
+---
+
+# 40. CRITICAL AI DEVELOPMENT RULES
+
+These rules are mandatory.
+
+### RULE 1
+
+Do not skip phases.
+
+### RULE 2
+
+Do not claim tests passed without running them.
+
+### RULE 3
+
+Do not invent command output.
+
+### RULE 4
+
+Do not silently change public APIs.
+
+### RULE 5
+
+Do not introduce runtime dependencies without justification.
+
+### RULE 6
+
+Do not use `any` in public APIs.
+
+### RULE 7
+
+Do not create fake benchmark results.
+
+### RULE 8
+
+Do not copy implementation code from Express, Koa or Fastify.
+
+### RULE 9
+
+Do not mix unrelated responsibilities.
+
+### RULE 10
+
+Do not continue to the next phase while the current phase is failing.
+
+### RULE 11
+
+Before modifying architecture, explain why.
+
+### RULE 12
+
+If a specification is ambiguous, choose the simplest extensible design and document the decision.
+
+---
+
+# 41. GIT CHECKPOINTS
+
+After each phase, ensure the project is in a clean buildable state.
+
+Suggested commits:
+
+```text
+feat: initialize aero framework
+
+feat: implement core routing and middleware
+
+feat: add body parsing and http utilities
+
+feat: add lifecycle hooks and validation
+
+feat: add plugin architecture
+
+feat: optimize routing and performance
+
+feat: add production infrastructure
+
+docs: complete framework documentation
+```
+
+Do not create commits unless the environment actually supports Git operations.
+
+---
+
+# 42. FINAL VERIFICATION
+
+At the end execute:
+
+```bash
+npm install
+npm run build
+npm test
+npm run example
+```
+
+Then verify with HTTP requests such as:
+
+```bash
+curl http://localhost:3000/
+curl http://localhost:3000/hello/Aero
+curl http://localhost:3000/users/100
+curl -X POST http://localhost:3000/users \
+     -H "Content-Type: application/json" \
+     -d '{"name":"John"}'
+```
+
+Verify:
+
+```text
+200
+201
+400
+404
+405
+500
+```
+
+where appropriate.
+
+---
+
+# 43. FINAL RESPONSE FORMAT
+
+After implementation, report:
+
+## 1. Architecture
+
+Briefly explain the final architecture.
+
+## 2. File Tree
+
+Show the complete project tree.
+
+## 3. Phase Summary
+
+Show:
+
+```text
+Phase 1 — PASS
+Phase 2 — PASS
+Phase 3 — PASS
+...
+```
+
+Only mark PASS if actually verified.
+
+## 4. Test Output
+
+Show actual relevant test output.
+
+Do not fabricate output.
+
+## 5. Build Output
+
+Show actual build result.
+
+## 6. Example Verification
+
+Show actual HTTP verification.
+
+## 7. Known Limitations
+
+Clearly list anything intentionally not implemented.
+
+## 8. Next Recommended Phase
+
+Suggest the next technically useful improvement without pretending it already exists.
+
+---
+
+# 44. START NOW
+
+Begin with:
+
+```text
+Phase 1 — Core Foundation
+```
+
+First:
+
+1. Create the project structure.
+2. Create package.json.
+3. Create tsconfig.json.
+4. Implement types.
+5. Implement errors.
+6. Implement request.
+7. Implement response.
+8. Implement context.
+9. Implement middleware.
+10. Implement router.
+11. Implement application.
+12. Implement index exports.
+13. Create basic example.
+14. Create Phase 1 tests.
+15. Run build.
+16. Run tests.
+17. Fix every failure.
+18. Only then report Phase 1 completion.
+
+Do not implement Phase 2 until Phase 1 is verified.
+
+**Begin now.**

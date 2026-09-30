@@ -1,0 +1,6 @@
+tests/
+examples/
+benchmarks/
+tsconfig.json
+.gitignore
+.npmignore

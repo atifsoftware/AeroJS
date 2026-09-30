@@ -1,0 +1,58 @@
+{
+  "name": "aero",
+  "version": "0.1.0",
+  "description": "A minimal, fast, and elegant web framework for Node.js — Fastify's performance, AdonisJS's DX, Express's simplicity.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/test-client.d.ts",
+      "import": "./dist/testing/test-client.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch examples/01-basic.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "example": "tsx examples/01-basic.ts",
+    "benchmark": "tsx benchmarks/compare.ts",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "web",
+    "framework",
+    "http",
+    "server",
+    "aero",
+    "express",
+    "koa",
+    "fastify",
+    "adonisjs",
+    "typescript",
+    "ioc",
+    "dependency-injection"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}
