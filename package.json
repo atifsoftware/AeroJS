@@ -49,6 +49,10 @@
     "./mail": {
       "types": "./dist/mail/index.d.ts",
       "import": "./dist/mail/index.js"
+    },
+    "./swagger": {
+      "types": "./dist/swagger/index.d.ts",
+      "import": "./dist/swagger/index.js"
     }
   },
   "files": [

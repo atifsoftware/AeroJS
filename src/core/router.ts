@@ -105,6 +105,10 @@ export class Router<State = DefaultState> {
   private readonly namedRoutes: Map<string, Route<State>> = new Map();
   private readonly regexCache: Map<string, RegExp> = new Map();
 
+  public get routes(): readonly Route<State>[] {
+    return this.allRoutes;
+  }
+
   constructor(
     public readonly namedMiddleware?: NamedMiddlewareRegistry<State>
   ) {}

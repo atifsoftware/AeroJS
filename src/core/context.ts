@@ -106,6 +106,16 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     return Object.values(this.req.files).flat();
   }
 
+  /**
+   * Direct access to underlying Knex.js query builder instance if configured.
+   */
+  public get knex(): any {
+    if (this.container && this.container.has('knex')) {
+      return this.container.resolve('knex');
+    }
+    return (globalThis as any).__AERO_KNEX__;
+  }
+
   public get headers(): IncomingMessage['headers'] {
     return this.req.headers;
   }

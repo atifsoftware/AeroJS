@@ -34,3 +34,8 @@ export {
   Migrator,
   type Migration,
 } from './migrator.js';
+
+export {
+  KnexDatabaseAdapter,
+  useKnex,
+} from './knex.js';

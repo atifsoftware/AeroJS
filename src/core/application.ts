@@ -75,6 +75,49 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
   public useSecurityHeaders(options?: SecurityHeadersOptions): this {
     return this.use(securityHeaders<State>(options));
   }
+
+  /**
+   * Configures Knex as the underlying database query engine and registers it in IoC container.
+   */
+  public useKnex(knexInstance: any, connectionName = 'default'): this {
+    import('../database/knex.js').then(({ useKnex: connectKnex }) => {
+      connectKnex(knexInstance, connectionName);
+    });
+    this.container.bind('knex', () => knexInstance);
+    return this;
+  }
+
+  /**
+   * Configures OpenAPI 3.0 specification endpoint and interactive Swagger UI documentation.
+   */
+  public useSwagger(options: {
+    title?: string;
+    version?: string;
+    description?: string;
+    route?: string;
+    specRoute?: string;
+    security?: boolean | Record<string, any>;
+  } = {}): this {
+    const uiRoute = options.route || '/docs';
+    const specRoute = options.specRoute || '/openapi.json';
+
+    this.get(specRoute, async (ctx) => {
+      const { SwaggerGenerator } = await import('../swagger/generator.js');
+      const spec = SwaggerGenerator.generate(this.router.routes, options);
+      ctx.status(200).json(spec);
+    });
+
+    this.get(uiRoute, async (ctx) => {
+      const { renderSwaggerUI } = await import('../swagger/ui.js');
+      const html = renderSwaggerUI({
+        title: options.title || 'AeroJS API Documentation',
+        specUrl: specRoute,
+      });
+      ctx.status(200).html(html);
+    });
+
+    return this;
+  }
 }
 
 export default Aero;

@@ -163,6 +163,18 @@ export {
   type MailerConfig,
 } from './mail/index.js';
 export {
+  SwaggerGenerator,
+  renderSwaggerUI,
+  swaggerPlugin,
+  type OpenAPISpec,
+  type SwaggerOptions,
+  type SwaggerUIOptions,
+} from './swagger/index.js';
+export {
+  KnexDatabaseAdapter,
+  useKnex,
+} from './database/index.js';
+export {
   parseBody,
   readRawBody,
   parseUrlEncoded,
