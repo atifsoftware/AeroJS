@@ -44,6 +44,7 @@ import {
   type WebSocketUpgradeHandler,
 } from '../ws/websocket.js';
 import { WebSocketHub } from '../ws/websocket-hub.js';
+import { PrometheusMetrics } from '../diagnostics/prometheus.js';
 import { HookRunner, type HookMap, type HookName } from './hooks.js';
 export { type HookMap, type HookName } from './hooks.js';
 
@@ -194,6 +195,8 @@ export class ApplicationCore<State = DefaultState> {
       if (ws) {
         // Automatically attach to the Hub for Pusher/Echo capabilities
         // We pass the user from req if it exists (e.g., from auth middleware reading upgrade headers)
+        PrometheusMetrics.incrementWebsocketConnection();
+        ws.on('close', () => PrometheusMetrics.decrementWebsocketConnection());
         this.websocketHub.handleConnection(ws, (req as any).user);
         void wsHandler(ws, req);
       }
