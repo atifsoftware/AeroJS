@@ -4,6 +4,7 @@
  */
 
 import type { IncomingMessage, IncomingHttpHeaders } from 'node:http';
+import crypto from 'node:crypto';
 import type { ParsedQuery, RouteParams } from './types.js';
 import { parseQuery } from './utils.js';
 
@@ -29,6 +30,7 @@ export class AeroRequest {
   public files: Record<string, any>;
   public readonly headers: IncomingHttpHeaders;
   public readonly header: IncomingHttpHeaders;
+  public id!: string;
 
   private readonly trustProxy: boolean;
   private readonly customProperties: Map<string, unknown> = new Map();
@@ -38,8 +40,9 @@ export class AeroRequest {
     this.trustProxy = Boolean(options.trustProxy);
     this.method = (raw.method ?? 'GET').toUpperCase();
     this.url = raw.url ?? '/';
-    this.headers = raw.headers;
-    this.header = raw.headers;
+    this.headers = raw.headers || {};
+    this.header = raw.headers || {};
+    this.id = this.headers['x-request-id'] ? String(this.headers['x-request-id']) : crypto.randomUUID();
     this.params = {};
     this.body = undefined;
     this.files = {};
