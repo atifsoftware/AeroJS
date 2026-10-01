@@ -18,7 +18,6 @@ import {
   InternalError,
   UnprocessableEntityError,
 } from './errors.js';
-import { Logger } from '../logging/logger.js';
 
 export type DefaultState = Record<string, unknown>;
 
@@ -37,17 +36,6 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
   public container?: ContainerLike;
 
   private _cachedCookies?: Record<string, string>;
-
-  public log = {
-    emergency: (message: string, context?: Record<string, unknown>) => Logger.emergency(message, context),
-    alert: (message: string, context?: Record<string, unknown>) => Logger.alert(message, context),
-    critical: (message: string, context?: Record<string, unknown>) => Logger.critical(message, context),
-    error: (message: string, context?: Record<string, unknown>) => Logger.error(message, context),
-    warning: (message: string, context?: Record<string, unknown>) => Logger.warning(message, context),
-    notice: (message: string, context?: Record<string, unknown>) => Logger.notice(message, context),
-    info: (message: string, context?: Record<string, unknown>) => Logger.info(message, context),
-    debug: (message: string, context?: Record<string, unknown>) => Logger.debug(message, context),
-  };
 
   constructor(
     req: AeroRequest | IncomingMessage,

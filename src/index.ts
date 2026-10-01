@@ -384,3 +384,4 @@ export {
   type TaskRunRecord,
 } from './scheduler/scheduler.js';
 
+export * from './cache/index.js';

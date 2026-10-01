@@ -123,13 +123,6 @@ export class ApplicationCore<State = DefaultState> {
     return this.router.get(path, ...handlers);
   }
 
-  public enableHealthCheck(path = '/health'): this {
-    this.get(path, (ctx: AeroContext<State>) => {
-      ctx.json({ status: 'ok' });
-    });
-    return this;
-  }
-
   public post(path: string, ...handlers: any[]): RouteBuilder<State> {
     return this.router.post(path, ...handlers);
   }
@@ -399,8 +392,6 @@ export class ApplicationCore<State = DefaultState> {
     const res = new AeroResponse(rawRes);
     const ctx = new AeroContext<State>(req, res, {} as State, this.container);
 
-    res.setHeader('x-request-id', req.id);
-
     if (req.method === 'HEAD') {
       res.isHead = true;
     }
@@ -632,17 +623,6 @@ export class ApplicationCore<State = DefaultState> {
 
     server.listen(port, host, cb);
     return server;
-  }
-
-  public enableGracefulShutdown(): this {
-    const handler = async () => {
-      console.log('Gracefully shutting down...');
-      await this.close();
-      process.exit(0);
-    };
-    process.on('SIGTERM', handler);
-    process.on('SIGINT', handler);
-    return this;
   }
 
   public async listenAsync(port = 3000, host = '0.0.0.0'): Promise<Server> {
