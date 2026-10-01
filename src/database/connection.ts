@@ -30,6 +30,27 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
   private tables = new Map<string, DatabaseRow[]>();
   private autoIncrements = new Map<string, number>();
 
+  private savepoints = new Map<string, { tables: Map<string, DatabaseRow[]>, autoIncrements: Map<string, number> }>();
+
+  public async savepoint(name: string): Promise<void> {
+    const backupTables = new Map<string, DatabaseRow[]>();
+    for (const [t, rows] of this.tables.entries()) {
+      backupTables.set(t, rows.map((r) => ({ ...r })));
+    }
+    const backupAuto = new Map<string, number>(this.autoIncrements);
+    this.savepoints.set(name, { tables: backupTables, autoIncrements: backupAuto });
+  }
+
+  public async rollbackTo(name: string): Promise<void> {
+    const sp = this.savepoints.get(name);
+    if (sp) {
+      this.tables = sp.tables;
+      this.autoIncrements = sp.autoIncrements;
+      this.savepoints.delete(name);
+    }
+  }
+
+
   public getTableData(table: string): DatabaseRow[] {
     let rows = this.tables.get(table);
     if (!rows) {
@@ -112,6 +133,59 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
 /**
  * Global Database Connection Manager (DB)
  */
+
+/**
+ * Wraps a DatabaseAdapter to support nested transactions via SQL savepoints.
+ */
+export function withNestedTransactions(adapter: DatabaseAdapter, depth = 0): DatabaseAdapter {
+  return new Proxy(adapter, {
+    get(target, prop, receiver) {
+      if (prop === '__isNestedTransactionProxy') return true;
+      if (prop === 'transaction') {
+        return async function <T>(callback: (trx: DatabaseAdapter) => Promise<T>): Promise<T> {
+          const currentDepth = depth + 1;
+          const savepointName = `aero_sp_${currentDepth}`;
+
+          // If depth > 1, we are inside an existing transaction, use savepoints
+          if (currentDepth > 1) {
+            if (typeof (target as any).savepoint === 'function') {
+              await (target as any).savepoint(savepointName);
+            } else {
+              try {
+                await target.execute(`SAVEPOINT ${savepointName}`);
+              } catch (e) { /* ignore if savepoints unsupported by mock */ }
+            }
+
+            const nestedAdapter = withNestedTransactions(target, currentDepth);
+            try {
+              const result = await callback(nestedAdapter);
+              // some dialects require releasing the savepoint, we can ignore or execute RELEASE
+              // await target.execute(`RELEASE SAVEPOINT ${savepointName}`);
+              return result;
+            } catch (error) {
+              if (typeof (target as any).rollbackTo === 'function') {
+                await (target as any).rollbackTo(savepointName);
+              } else {
+                try {
+                  await target.execute(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+                } catch (e) { /* ignore */ }
+              }
+              throw error;
+            }
+          }
+
+          // Root transaction (depth = 1)
+          return await target.transaction(async (rootTrx) => {
+            const rootAdapter = withNestedTransactions(rootTrx, currentDepth);
+            return await callback(rootAdapter);
+          });
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}
+
 export class Database {
   public static readonly tableDefaults = new Map<string, Record<string, unknown>>();
   private static defaultAdapter: DatabaseAdapter = new MemoryDatabaseAdapter();
@@ -179,7 +253,13 @@ export class Database {
     const adapter = typeof connectionOrAdapter === 'string'
       ? this.getAdapter(connectionOrAdapter)
       : connectionOrAdapter;
-    return adapter.transaction(callback);
+
+    // If the adapter is already a proxy wrapper, don't re-wrap with depth 0
+    if ((adapter as any).__isNestedTransactionProxy) {
+      return adapter.transaction(callback);
+    }
+    return withNestedTransactions(adapter).transaction(callback);
+
   }
 
   /**

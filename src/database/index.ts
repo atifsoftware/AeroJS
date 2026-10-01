@@ -59,6 +59,16 @@ export {
 } from './migrator.js';
 
 export {
+  Seeder,
+  DatabaseSeeder,
+} from './seeder.js';
+
+export {
+  ModelFactory,
+  type FactoryDefinition,
+} from './factory.js';
+
+export {
   KnexDatabaseAdapter,
   useKnex,
 } from './knex.js';
