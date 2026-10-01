@@ -394,3 +394,6 @@ export * from './cache/index.js';
 // Native Zero-Dependency Redis Client
 export * from './redis/index.js';
 
+// Real-Time WebSocket Hub, Channels & Clustering
+export * from './ws/index.js';
+

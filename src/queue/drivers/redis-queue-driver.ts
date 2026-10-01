@@ -96,10 +96,14 @@ export class RedisQueueDriver implements QueueDriver {
     ]);
 
     if (readyJobs && readyJobs.length > 0) {
-      // Remove them from delayed ZSET
-      await this.client.getRawConnection().sendCommand(['ZREM', this.delayedKey(queue), ...readyJobs]);
-      // Push them to the ready LIST
-      await this.client.rpush(this.queueKey(queue), ...readyJobs);
+      for (const job of readyJobs) {
+        // ZREM returns 1 if the element was removed, 0 if it was already removed by another worker
+        const removed = await this.client.getRawConnection().sendCommand(['ZREM', this.delayedKey(queue), job]);
+        if (removed === 1) {
+          // Push only the jobs this worker successfully claimed
+          await this.client.rpush(this.queueKey(queue), job);
+        }
+      }
     }
   }
 }

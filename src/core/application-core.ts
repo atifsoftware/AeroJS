@@ -43,17 +43,31 @@ import {
   handleWebSocketUpgrade,
   type WebSocketUpgradeHandler,
 } from '../ws/websocket.js';
+import { WebSocketHub } from '../ws/websocket-hub.js';
 import { HookRunner, type HookMap, type HookName } from './hooks.js';
 export { type HookMap, type HookName } from './hooks.js';
 
 export class ApplicationCore<State = DefaultState> {
   protected readonly wsRoutes = new Map<string, WebSocketUpgradeHandler>();
+  public readonly websocketHub = new WebSocketHub();
+
+  // The application exposing ws.hub as requested
+  public readonly ws = Object.assign(
+    (path: string, handler: WebSocketUpgradeHandler) => this.registerWs(path, handler),
+    { hub: this.websocketHub }
+  );
+
   protected readonly upgradeHandlers: ((req: IncomingMessage, socket: Duplex, head: Buffer) => void)[] = [];
   public readonly configOptions: AeroOptions;
   public readonly namedMiddleware = new NamedMiddlewareRegistry<State>();
   public readonly router: Router<State>;
   public readonly hookRunner = new HookRunner<State>();
   protected readonly middlewares: Middleware<State>[] = [];
+
+
+  public async broadcast(channels: string | string[], event: string, data?: any): Promise<void> {
+    await this.websocketHub.broadcast(channels, event, data);
+  }
 
   public get hooks(): HookRunner<State>['hooks'] {
     return this.hookRunner.hooks;
@@ -167,7 +181,7 @@ export class ApplicationCore<State = DefaultState> {
     return this.router.add(method, path, handlers, schema);
   }
 
-  public ws(path: string, handler: WebSocketUpgradeHandler): this {
+  public registerWs(path: string, handler: WebSocketUpgradeHandler): this {
     this.wsRoutes.set(normalizePath(path), handler);
     return this;
   }
@@ -185,6 +199,9 @@ export class ApplicationCore<State = DefaultState> {
     if (wsHandler) {
       const ws = handleWebSocketUpgrade(req, socket, head);
       if (ws) {
+        // Automatically attach to the Hub for Pusher/Echo capabilities
+        // We pass the user from req if it exists (e.g., from auth middleware reading upgrade headers)
+        this.websocketHub.handleConnection(ws, (req as any).user);
         void wsHandler(ws, req);
       }
       return;
