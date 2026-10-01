@@ -3,8 +3,10 @@
  * @description AeroResponse wrapper around Node.js ServerResponse.
  */
 
-import type { ServerResponse, OutgoingHttpHeaders, OutgoingHttpHeader } from 'node:http';
+import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders, OutgoingHttpHeader } from 'node:http';
 import { Readable, pipeline } from 'node:stream';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { CookieOptions } from './types.js';
 import { serializeCookie } from './utils.js';
 
@@ -235,6 +237,92 @@ export class AeroResponse {
       this.raw.end(chunk);
     } else {
       this.raw.end();
+    }
+  }
+
+
+  public async streamFile(
+    req: IncomingMessage,
+    filePath: string,
+    options: { range?: boolean; download?: boolean; filename?: string } = {}
+  ): Promise<void> {
+    if (this._isSent || this.raw.writableEnded) return;
+
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const totalSize = stat.size;
+      const fileName = options.filename || path.basename(filePath);
+
+      if (options.download) {
+        this.set('Content-Disposition', `attachment; filename="${fileName}"`);
+      } else {
+        this.set('Content-Disposition', 'inline');
+      }
+
+      if (!this.raw.getHeader('Content-Type')) {
+        this.type('application/octet-stream'); // Default, let mime-types or caller override
+      }
+
+      if (options.range !== false) {
+        this.set('Accept-Ranges', 'bytes');
+      }
+
+      const rangeHeader = req.headers.range;
+
+      if (options.range !== false && rangeHeader) {
+        // Range: bytes=0-1024
+        const parts = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0]!, 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+
+        if (start >= totalSize || end >= totalSize || start > end) {
+          this.status(416); // Range Not Satisfiable
+          this.set('Content-Range', `bytes */${totalSize}`);
+          this.flushEnd();
+          return;
+        }
+
+        const chunksize = end - start + 1;
+        const readStream = fs.createReadStream(filePath, { start, end });
+
+        this.status(206); // Partial Content
+        this.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+        this.set('Content-Length', chunksize);
+
+        this._isSent = true;
+        if (this.isHead) {
+          this.raw.end();
+          readStream.destroy();
+        } else {
+          pipeline(readStream, this.raw, (err) => {
+            if (err && !this.raw.writableEnded) {
+              this.raw.destroy(err);
+            }
+          });
+        }
+      } else {
+        // Normal full file stream
+        this.set('Content-Length', totalSize);
+        const readStream = fs.createReadStream(filePath);
+
+        this._isSent = true;
+        if (this.isHead) {
+          this.raw.end();
+          readStream.destroy();
+        } else {
+          pipeline(readStream, this.raw, (err) => {
+            if (err && !this.raw.writableEnded) {
+              this.raw.destroy(err);
+            }
+          });
+        }
+      }
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        this.status(404).send('File Not Found');
+      } else {
+        this.status(500).send('Internal Server Error while reading file');
+      }
     }
   }
 

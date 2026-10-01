@@ -10,3 +10,4 @@ export * from './drivers/s3-driver.js';
 export * from './uploaded-file.js';
 export * from './multipart.js';
 export * from './storage-manager.js';
+export * from './chunked-uploader.js';
