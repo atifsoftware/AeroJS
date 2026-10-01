@@ -397,3 +397,6 @@ export * from './redis/index.js';
 // Real-Time WebSocket Hub, Channels & Clustering
 export * from './ws/index.js';
 
+// Enterprise Health Checks & Prometheus Metrics
+export * from './diagnostics/index.js';
+
