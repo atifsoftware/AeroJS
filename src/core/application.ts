@@ -13,6 +13,7 @@ import { viewPlugin, type ViewDriver, type ViewEngine } from '../views/view.js';
 import { inertiaPlugin, type InertiaConfig } from '../inertia/inertia.js';
 import { rateLimit, type RateLimitOptions } from '../security/rate-limiter.js';
 import { securityHeaders, type SecurityHeadersOptions } from '../security/headers.js';
+import { graphqlPlugin, type GraphQLPluginOptions } from '../graphql/plugin.js';
 import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagnostics-plugin.js';
 
 export { ApplicationCore, type HookMap, type HookName } from './application-core.js';
@@ -23,6 +24,13 @@ export { ApplicationCore, type HookMap, type HookName } from './application-core
  * fullstack monolith, SPA, and security extensions on top.
  */
 export class Aero<State = DefaultState> extends ApplicationCore<State> {
+  /**
+   * Enables Zero-Dependency GraphQL execution and interactive Playground.
+   */
+  public useGraphQL(options: GraphQLPluginOptions): this {
+    return this.register(graphqlPlugin(options)) as this;
+  }
+
   /**
    * Enables Enterprise Diagnostics (Health Checks & Prometheus Metrics).
    */
