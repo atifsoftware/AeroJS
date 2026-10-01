@@ -394,3 +394,4 @@ export * from './redis/index.js';
 
 export * from './ws/index.js';
 export * from './diagnostics/index.js';
+export * from './security/index.js';
