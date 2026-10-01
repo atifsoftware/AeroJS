@@ -9,6 +9,8 @@ import { AeroRequest } from './request.js';
 import { AeroResponse } from './response.js';
 import type { CookieOptions, ParsedQuery, RouteParams } from './types.js';
 import { parseCookies } from './utils.js';
+import { SseStream, type SseOptions } from '../sse/sse.js';
+
 import {
   AeroError,
   BadRequestError,
@@ -274,6 +276,31 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
       throw new ForbiddenError(`Unauthorized to perform '${action}' on '${module}'.`);
     }
   }
+
+  public locale = 'en';
+
+  public t(key: string, params?: Record<string, any>): string {
+    if (this.container && this.container.has('i18n')) {
+      const i18n = this.container.resolve<any>('i18n');
+      return i18n.t(key, params, this.locale);
+    }
+    return key;
+  }
+
+  public sse(options?: SseOptions): SseStream {
+    return new SseStream(this.res.raw, options);
+  }
+
+  public pdf(buffer: Buffer): void {
+    this.res.setHeader('Content-Type', 'application/pdf');
+    this.res.send(buffer);
+  }
+
+  public thermalReceipt(buffer: Uint8Array | Buffer): void {
+    this.res.setHeader('Content-Type', 'application/octet-stream');
+    this.res.send(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+  }
+
 
   public throw(status: number, message?: string, details?: unknown): never {
     switch (status) {

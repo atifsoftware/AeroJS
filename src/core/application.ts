@@ -19,6 +19,8 @@ import { rateLimit, type RateLimitOptions } from '../security/rate-limiter.js';
 import { securityHeaders, type SecurityHeadersOptions } from '../security/headers.js';
 import { graphqlPlugin, type GraphQLPluginOptions } from '../graphql/plugin.js';
 import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagnostics-plugin.js';
+import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
+
 
 export { ApplicationCore, type HookMap, type HookName } from './application-core.js';
 
@@ -58,6 +60,14 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
   public useGraphQL(options: GraphQLPluginOptions): this {
     return this.register(graphqlPlugin(options)) as this;
   }
+
+  /**
+   * Enables the I18n Localization Engine.
+   */
+  public useI18n(options: I18nOptions): this {
+    return this.register(i18nPlugin(options)) as this;
+  }
+
 
   /**
    * Enables Enterprise Diagnostics (Health Checks & Prometheus Metrics).
