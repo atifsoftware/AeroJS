@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder } from './commands/make.js';
 import { initProject } from './commands/init.js';
+import { createNewProject } from './commands/new.js';
 import { encryptEnv, decryptEnv } from './commands/vault.js';
 import { Migrator } from '../database/migrator.js';
 
@@ -29,8 +30,24 @@ export class AeroCLI {
 
     try {
       switch (command) {
-        case 'init':
         case 'new': {
+          const projectName = argv[1];
+          if (!projectName) {
+            console.error('Error: Please provide a project name. Example: aero new my-app');
+            return 1;
+          }
+
+          let template = 'api-starter';
+          const templateArg = argv.find(a => a.startsWith('--template=') || a.startsWith('-t='));
+          if (templateArg) {
+            template = templateArg.split('=')[1] || 'api-starter';
+          }
+
+          createNewProject(projectName, template);
+          return 0;
+        }
+
+        case 'init': {
           const targetDir = argv[1] || '.';
           const created = initProject(targetDir);
           console.log(`\n🎉 Successfully scaffolded AeroJS application in "${targetDir}" (${created.length} files created)!\n`);
