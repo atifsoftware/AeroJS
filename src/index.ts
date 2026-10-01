@@ -384,3 +384,6 @@ export {
   type TaskRunRecord,
 } from './scheduler/scheduler.js';
 
+// Universal Multi-Store Cache System
+export * from './cache/index.js';
+
