@@ -403,3 +403,5 @@ export * from './diagnostics/index.js';
 // Advanced Security Suite (TOTP, Vault, Encrypted Cookies)
 export * from './security/index.js';
 
+// Zero-Dependency GraphQL Engine & Model Adapter
+export * from './graphql/index.js';
