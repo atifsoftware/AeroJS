@@ -1,5 +1,5 @@
 {
-  "name": "aero",
+  "name": "aerojs",
   "version": "0.1.0",
   "description": "A minimal, blazing-fast, zero-dependency full-stack web framework for Node.js — supporting React, Vue 3, Inertia.js, and SSR monoliths.",
   "repository": {
@@ -10,12 +10,14 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "aero": "./bin/aero.js"
+    "aero": "./bin/aero.js",
+    "aerojs": "./bin/aero.js"
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./testing": {
       "types": "./dist/testing/test-client.d.ts",

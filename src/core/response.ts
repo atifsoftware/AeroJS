@@ -4,7 +4,7 @@
  */
 
 import type { ServerResponse, OutgoingHttpHeaders, OutgoingHttpHeader } from 'node:http';
-import { Readable } from 'node:stream';
+import { Readable, pipeline } from 'node:stream';
 import type { CookieOptions } from './types.js';
 import { serializeCookie } from './utils.js';
 
@@ -165,7 +165,11 @@ export class AeroResponse {
       if (this.isHead) {
         this.raw.end();
       } else {
-        data.pipe(this.raw);
+        pipeline(data, this.raw, (err) => {
+          if (err && !this.raw.writableEnded) {
+            this.raw.destroy(err);
+          }
+        });
       }
       return;
     }

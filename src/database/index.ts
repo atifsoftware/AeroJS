@@ -21,8 +21,31 @@ export {
 export {
   Model,
   Relation,
+  computed,
   type RelationDefinition,
+  type ManyToManyOptions,
+  type HasManyThroughOptions,
 } from './model.js';
+
+export {
+  getHookRegistry,
+  registerHook,
+  ModelHookRegistry,
+  beforeCreate,
+  afterCreate,
+  beforeSave,
+  afterSave,
+  beforeUpdate,
+  afterUpdate,
+  beforeDelete,
+  afterDelete,
+  beforeFind,
+  afterFind,
+  beforeFetch,
+  afterFetch,
+  type ModelHookEvent,
+  type ModelHookHandler,
+} from './model-hooks.js';
 
 export {
   Schema,

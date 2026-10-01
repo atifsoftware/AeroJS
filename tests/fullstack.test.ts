@@ -318,4 +318,22 @@ describe('Fullstack Capabilities: Static, CORS, Views & Inertia.js', () => {
       inertia.redirect('/login');
     });
   });
+
+  describe('Official Vite Integration Helper', () => {
+    it('generates Vite HMR client and script tags in development mode', async () => {
+      const { vite } = await import('../src/index.js');
+      const tags = vite('resources/js/app.ts');
+      expect(tags).toContain('http://localhost:5173/@vite/client');
+      expect(tags).toContain('http://localhost:5173/resources/js/app.ts');
+    });
+
+    it('generates multiple entry scripts if an array is passed', async () => {
+      const { vite } = await import('../src/index.js');
+      const tags = vite(['resources/css/app.css', 'resources/js/app.tsx']);
+      expect(tags).toContain('http://localhost:5173/@vite/client');
+      expect(tags).toContain('http://localhost:5173/resources/css/app.css');
+      expect(tags).toContain('http://localhost:5173/resources/js/app.tsx');
+    });
+  });
 });
+

@@ -4,6 +4,7 @@
  */
 
 import { makeController, makeModel, makeMigration, makeMiddleware } from './commands/make.js';
+import { initProject } from './commands/init.js';
 import { Migrator } from '../database/migrator.js';
 
 export class AeroCLI {
@@ -24,6 +25,20 @@ export class AeroCLI {
 
     try {
       switch (command) {
+        case 'init':
+        case 'new': {
+          const targetDir = argv[1] || '.';
+          const created = initProject(targetDir);
+          console.log(`\n🎉 Successfully scaffolded AeroJS application in "${targetDir}" (${created.length} files created)!\n`);
+          console.log('Next steps:');
+          if (targetDir !== '.') {
+            console.log(`  1. cd ${targetDir}`);
+          }
+          console.log('  2. npm install');
+          console.log('  3. npm run dev\n');
+          return 0;
+        }
+
         case 'make:controller': {
           const name = argv[1];
           if (!name) {
@@ -113,13 +128,17 @@ export class AeroCLI {
 AeroJS CLI - Full-Stack Modern Web Framework v${this.version}
 
 Usage:
-  aero <command> [arguments] [options]
+  aerojs <command> [arguments] [options]
+  aero   <command> [arguments] [options]
 
 Options:
   -v, --version         Display current AeroJS version
   -h, --help            Display this help message
 
 Available Commands:
+  init [dir]                 Scaffold a complete production AeroJS application
+  new <name>                 Create a new AeroJS application in a new directory
+
   make:controller <name>     Create a new RESTful controller class
   make:model <name> [-m]     Create a new Active Record Model (optionally with migration)
   make:migration <name>      Create a new timestamped schema migration file

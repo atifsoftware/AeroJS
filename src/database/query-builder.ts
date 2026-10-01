@@ -41,6 +41,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   protected orderClauses: { column: string; direction: 'ASC' | 'DESC' }[] = [];
   protected limitCount?: number;
   protected offsetCount?: number;
+  protected isDistinct = false;
+  protected groupClauses: string[] = [];
+  protected havingClauses: { column: string; operator: string; value: unknown }[] = [];
 
   public _eagerLoads: string[] = [];
 
@@ -112,20 +115,81 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     return this.where(column, 'IS NOT', null);
   }
 
+  public whereNotIn(column: string, values: unknown[]): this {
+    return this.where(column, 'NOT IN', values);
+  }
+
+  public whereBetween(column: string, range: [unknown, unknown]): this {
+    return this.where(column, 'BETWEEN', range);
+  }
+
+  public whereNotBetween(column: string, range: [unknown, unknown]): this {
+    return this.where(column, 'NOT BETWEEN', range);
+  }
+
+  public whereLike(column: string, pattern: string): this {
+    return this.where(column, 'LIKE', pattern);
+  }
+
+  public whereRaw(sql: string, bindings: unknown[] = []): this {
+    this.whereClauses.push({
+      type: 'and',
+      column: sql,
+      operator: 'RAW',
+      value: bindings,
+    });
+    return this;
+  }
+
+  public distinct(): this {
+    this.isDistinct = true;
+    return this;
+  }
+
+  public groupBy(...columns: string[]): this {
+    this.groupClauses.push(...columns);
+    return this;
+  }
+
+  public having(column: string, operator: string, value: unknown): this {
+    const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE'];
+    const op = operator.toUpperCase().trim();
+    if (!validOperators.includes(op)) {
+      throw new Error(`Security Violation: Unsupported operator in having: "${operator}"`);
+    }
+    this.havingClauses.push({ column, operator: op, value });
+    return this;
+  }
+
   public join(table: string, first: string, operator: string, second: string): this {
-    this.joinClauses.push({ type: 'inner', table, first, operator, second });
+    const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<='];
+    const op = operator.trim();
+    if (!validOperators.includes(op)) {
+      throw new Error(`Security Violation: Unsupported operator in join: "${operator}"`);
+    }
+    this.joinClauses.push({ type: 'inner', table, first, operator: op, second });
     return this;
   }
 
   public leftJoin(table: string, first: string, operator: string, second: string): this {
-    this.joinClauses.push({ type: 'left', table, first, operator, second });
+    const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<='];
+    const op = operator.trim();
+    if (!validOperators.includes(op)) {
+      throw new Error(`Security Violation: Unsupported operator in leftJoin: "${operator}"`);
+    }
+    this.joinClauses.push({ type: 'left', table, first, operator: op, second });
     return this;
   }
 
   public orderBy(column: string, direction: 'asc' | 'desc' | 'ASC' | 'DESC' = 'ASC'): this {
+    const cleanDir = String(direction).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    const trimmedCol = column.trim();
+    if (!/^[a-zA-Z0-9_.]+$/.test(trimmedCol) && !/^`[a-zA-Z0-9_.]+`$/.test(trimmedCol) && !/^"[a-zA-Z0-9_.]+"$/.test(trimmedCol)) {
+      throw new Error(`Security Violation: Invalid column identifier in orderBy: "${column}"`);
+    }
     this.orderClauses.push({
-      column,
-      direction: direction.toUpperCase() as 'ASC' | 'DESC',
+      column: trimmedCol,
+      direction: cleanDir,
     });
     return this;
   }
@@ -150,11 +214,47 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   }
 
   /**
+   * Compiles where clauses into a standalone SQL WHERE fragment and parameter bindings.
+   */
+  public compileWhere(): { sql: string; bindings: unknown[] } {
+    const bindings: unknown[] = [];
+    if (this.whereClauses.length === 0) {
+      return { sql: '', bindings };
+    }
+
+    const parts = this.whereClauses.map((clause, idx) => {
+      const prefix = idx > 0 ? `${clause.type.toUpperCase()} ` : '';
+      if (clause.operator === 'RAW') {
+        if (Array.isArray(clause.value)) {
+          bindings.push(...clause.value);
+        }
+        return `${prefix}${clause.column}`;
+      }
+      if ((clause.operator === 'IN' || clause.operator === 'NOT IN') && Array.isArray(clause.value)) {
+        const placeholders = clause.value.map(() => '?').join(', ');
+        bindings.push(...clause.value);
+        return `${prefix}${clause.column} ${clause.operator} (${placeholders})`;
+      }
+      if ((clause.operator === 'BETWEEN' || clause.operator === 'NOT BETWEEN') && Array.isArray(clause.value)) {
+        bindings.push(clause.value[0], clause.value[1]);
+        return `${prefix}${clause.column} ${clause.operator} ? AND ?`;
+      }
+      if (clause.value === null) {
+        return `${prefix}${clause.column} ${clause.operator} NULL`;
+      }
+      bindings.push(clause.value);
+      return `${prefix}${clause.column} ${clause.operator} ?`;
+    });
+
+    return { sql: ` WHERE ${parts.join(' ')}`, bindings };
+  }
+
+  /**
    * Compiles the current builder state to raw SQL and bindings.
    */
   public toSQL(): { sql: string; bindings: unknown[] } {
     const bindings: unknown[] = [];
-    let sql = `SELECT ${this.columns.join(', ')} FROM ${this.tableName}`;
+    let sql = `SELECT ${this.isDistinct ? 'DISTINCT ' : ''}${this.columns.join(', ')} FROM ${this.tableName}`;
 
     // Joins
     for (const join of this.joinClauses) {
@@ -163,22 +263,25 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     }
 
     // Wheres
-    if (this.whereClauses.length > 0) {
-      sql += ' WHERE ';
-      const parts = this.whereClauses.map((clause, idx) => {
-        const prefix = idx > 0 ? `${clause.type.toUpperCase()} ` : '';
-        if (clause.operator === 'IN' && Array.isArray(clause.value)) {
-          const placeholders = clause.value.map(() => '?').join(', ');
-          bindings.push(...clause.value);
-          return `${prefix}${clause.column} IN (${placeholders})`;
-        }
-        if (clause.value === null) {
-          return `${prefix}${clause.column} ${clause.operator} NULL`;
-        }
-        bindings.push(clause.value);
-        return `${prefix}${clause.column} ${clause.operator} ?`;
+    const where = this.compileWhere();
+    if (where.sql) {
+      sql += where.sql;
+      bindings.push(...where.bindings);
+    }
+
+    // Group By
+    if (this.groupClauses.length > 0) {
+      sql += ` GROUP BY ${this.groupClauses.join(', ')}`;
+    }
+
+    // Having
+    if (this.havingClauses.length > 0) {
+      const havingParts = this.havingClauses.map((h, i) => {
+        const pfx = i > 0 ? 'AND ' : '';
+        bindings.push(h.value);
+        return `${pfx}${h.column} ${h.operator} ?`;
       });
-      sql += parts.join(' ');
+      sql += ` HAVING ${havingParts.join(' ')}`;
     }
 
     // Order By
@@ -235,10 +338,117 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
       return rows.length;
     }
-    const { sql, bindings } = this.toSQL();
-    const countSql = sql.replace(/^SELECT .+? FROM/i, `SELECT COUNT(${column}) as total FROM`);
+    const { sql: whereSql, bindings } = this.compileWhere();
+    let joinSql = '';
+    for (const join of this.joinClauses) {
+      const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+      joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+    }
+    const countSql = `SELECT COUNT(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
     const res = await this.adapter.query<{ total: number }>(countSql, bindings);
     return Number(res[0]?.total || 0);
+  }
+
+  /**
+   * Sums the given column.
+   */
+  public async sum(column: string): Promise<number> {
+    if (this.adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+      return rows.reduce((acc, r) => acc + (Number(r[column]) || 0), 0);
+    }
+    const { sql: whereSql, bindings } = this.compileWhere();
+    let joinSql = '';
+    for (const join of this.joinClauses) {
+      const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+      joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+    }
+    const sumSql = `SELECT SUM(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
+    const res = await this.adapter.query<{ total: number | string | null }>(sumSql, bindings);
+    return Number(res[0]?.total || 0);
+  }
+
+  /**
+   * Calculates the average of the given column.
+   */
+  public async avg(column: string): Promise<number> {
+    if (this.adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+      if (rows.length === 0) return 0;
+      const sum = rows.reduce((acc, r) => acc + (Number(r[column]) || 0), 0);
+      return sum / rows.length;
+    }
+    const { sql: whereSql, bindings } = this.compileWhere();
+    let joinSql = '';
+    for (const join of this.joinClauses) {
+      const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+      joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+    }
+    const avgSql = `SELECT AVG(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
+    const res = await this.adapter.query<{ total: number | string | null }>(avgSql, bindings);
+    return Number(res[0]?.total || 0);
+  }
+
+  /**
+   * Finds the minimum value of the given column.
+   */
+  public async min(column: string): Promise<number | null> {
+    if (this.adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+      if (rows.length === 0) return null;
+      return Math.min(...rows.map((r) => Number(r[column]) || 0));
+    }
+    const { sql: whereSql, bindings } = this.compileWhere();
+    let joinSql = '';
+    for (const join of this.joinClauses) {
+      const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+      joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+    }
+    const minSql = `SELECT MIN(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
+    const res = await this.adapter.query<{ total: number | string | null }>(minSql, bindings);
+    return res[0]?.total !== null && res[0]?.total !== undefined ? Number(res[0]?.total) : null;
+  }
+
+  /**
+   * Finds the maximum value of the given column.
+   */
+  public async max(column: string): Promise<number | null> {
+    if (this.adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+      if (rows.length === 0) return null;
+      return Math.max(...rows.map((r) => Number(r[column]) || 0));
+    }
+    const { sql: whereSql, bindings } = this.compileWhere();
+    let joinSql = '';
+    for (const join of this.joinClauses) {
+      const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+      joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+    }
+    const maxSql = `SELECT MAX(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
+    const res = await this.adapter.query<{ total: number | string | null }>(maxSql, bindings);
+    return res[0]?.total !== null && res[0]?.total !== undefined ? Number(res[0]?.total) : null;
+  }
+
+  /**
+   * Checks if any matching records exist.
+   */
+  public async exists(): Promise<boolean> {
+    const prevLimit = this.limitCount;
+    this.limitCount = 1;
+    const rows = await this.get();
+    this.limitCount = prevLimit;
+    return rows.length > 0;
+  }
+
+  /**
+   * Plucks an array of single column values from matching records.
+   */
+  public async pluck<K extends keyof T>(column: K): Promise<T[K][]> {
+    const prevColumns = this.columns;
+    this.columns = [String(column)];
+    const rows = await this.get();
+    this.columns = prevColumns;
+    return rows.map((r: any) => r[column]);
   }
 
   /**
@@ -261,18 +471,29 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       return { insertId: lastId, affectedRows: records.length };
     }
 
-    const first = records[0]!;
-    const keys = Object.keys(first);
+    const keys = Object.keys(records[0]!);
     const cols = keys.join(', ');
-    const placeholders = keys.map(() => '?').join(', ');
-    const sql = `INSERT INTO ${this.tableName} (${cols}) VALUES (${placeholders})`;
-    const bindings = keys.map((k) => (first as any)[k]);
+    const rowPlaceholders = `(${keys.map(() => '?').join(', ')})`;
+    const allPlaceholders = records.map(() => rowPlaceholders).join(', ');
+    let sql = `INSERT INTO ${this.tableName} (${cols}) VALUES ${allPlaceholders}`;
+
+    const isPg = ['pg', 'postgres', 'postgresql'].includes(this.adapter.dialect || '');
+    if (isPg && !keys.includes('id')) {
+      sql += ' RETURNING id';
+    }
+
+    const bindings: unknown[] = [];
+    for (const rec of records) {
+      for (const k of keys) {
+        bindings.push((rec as any)[k]);
+      }
+    }
 
     return this.adapter.execute(sql, bindings);
   }
 
   /**
-   * Updates matching records.
+   * Updates matching records safely without fragile string splitting.
    */
   public async update(data: Partial<T>): Promise<number> {
     if (this.adapter instanceof MemoryDatabaseAdapter) {
@@ -290,16 +511,15 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     const keys = Object.keys(data);
     const setClause = keys.map((k) => `${k} = ?`).join(', ');
     const setBindings = keys.map((k) => (data as any)[k]);
-    const { sql: selectSql, bindings: whereBindings } = this.toSQL();
-    const wherePart = selectSql.includes(' WHERE ') ? selectSql.split(' WHERE ')[1] : '';
+    const { sql: whereSql, bindings: whereBindings } = this.compileWhere();
 
-    const sql = `UPDATE ${this.tableName} SET ${setClause}${wherePart ? ' WHERE ' + wherePart : ''}`;
+    const sql = `UPDATE ${this.tableName} SET ${setClause}${whereSql}`;
     const res = await this.adapter.execute(sql, [...setBindings, ...whereBindings]);
     return res.affectedRows;
   }
 
   /**
-   * Deletes matching records.
+   * Deletes matching records safely without fragile string splitting.
    */
   public async delete(): Promise<number> {
     if (this.adapter instanceof MemoryDatabaseAdapter) {
@@ -314,10 +534,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       return deleted;
     }
 
-    const { sql: selectSql, bindings } = this.toSQL();
-    const wherePart = selectSql.includes(' WHERE ') ? selectSql.split(' WHERE ')[1] : '';
-    const sql = `DELETE FROM ${this.tableName}${wherePart ? ' WHERE ' + wherePart : ''}`;
-    const res = await this.adapter.execute(sql, bindings);
+    const { sql: whereSql, bindings: whereBindings } = this.compileWhere();
+    const sql = `DELETE FROM ${this.tableName}${whereSql}`;
+    const res = await this.adapter.execute(sql, whereBindings);
     return res.affectedRows;
   }
 
@@ -397,6 +616,15 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
         clauseMatches = rowVal <= (clause.value as any);
       } else if (clause.operator === 'IN' && Array.isArray(clause.value)) {
         clauseMatches = clause.value.includes(rowVal);
+      } else if (clause.operator === 'NOT IN' && Array.isArray(clause.value)) {
+        clauseMatches = !clause.value.includes(rowVal);
+      } else if (clause.operator === 'BETWEEN' && Array.isArray(clause.value)) {
+        clauseMatches = rowVal >= clause.value[0] && rowVal <= clause.value[1];
+      } else if (clause.operator === 'NOT BETWEEN' && Array.isArray(clause.value)) {
+        clauseMatches = rowVal < clause.value[0] || rowVal > clause.value[1];
+      } else if (clause.operator === 'LIKE' && typeof clause.value === 'string') {
+        const regexStr = '^' + clause.value.replace(/%/g, '.*').replace(/_/g, '.') + '$';
+        clauseMatches = new RegExp(regexStr, 'i').test(String(rowVal ?? ''));
       } else if (clause.operator === 'IS' && clause.value === null) {
         clauseMatches = rowVal === null || rowVal === undefined;
       } else if (clause.operator === 'IS NOT' && clause.value === null) {
@@ -428,5 +656,44 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       }
       return selected as T;
     });
+  }
+
+  // ─── Pessimistic Locking ──────────────────────────────────────────────────
+
+  protected lockMode?: 'FOR UPDATE' | 'SHARE';
+
+  /**
+   * Acquires an exclusive row lock (SELECT ... FOR UPDATE).
+   * Prevents other transactions from reading or modifying the locked rows
+   * until the current transaction commits or rolls back.
+   *
+   * Hospital use: Bed allocation — prevents two staff from booking the same bed.
+   * Blind cash closing — locks the shift session row during denomination count.
+   *
+   * @example
+   * await DB.transaction(async (trx) => {
+   *   const bed = await DB.table('beds')
+   *     .where('id', bedId)
+   *     .lockForUpdate()
+   *     .first();
+   *
+   *   if (bed.status !== 'vacant') throw new Error('Bed already occupied');
+   *   await DB.table('beds').where('id', bedId).update({ status: 'reserved' });
+   * });
+   */
+  public lockForUpdate(): this {
+    this.lockMode = 'FOR UPDATE';
+    return this;
+  }
+
+  /**
+   * Acquires a shared lock (SELECT ... FOR SHARE / LOCK IN SHARE MODE).
+   * Other transactions can read but cannot modify the locked rows.
+   *
+   * Hospital use: Reading stock quantities during concurrent dispensing checks.
+   */
+  public sharedLock(): this {
+    this.lockMode = 'SHARE';
+    return this;
   }
 }

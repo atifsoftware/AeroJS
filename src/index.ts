@@ -3,7 +3,10 @@
  * @description Main public API entry point for Aero Web Framework.
  */
 
-export { Aero, ApplicationCore, type HookName, type HookMap } from './core/application.js';
+import { loadEnv } from './config/env.js';
+loadEnv();
+
+export { Aero, Aero as AeroJS, ApplicationCore, type HookName, type HookMap } from './core/application.js';
 export { AeroRequest, type AeroRequestOptions } from './core/request.js';
 export { AeroResponse } from './core/response.js';
 export { AeroContext, type DefaultState, type ContainerLike } from './core/context.js';
@@ -13,7 +16,7 @@ export { Container, type FactoryFunction, type BindingDefinition } from './di/co
 export { ServiceProvider, type ServiceProviderConstructor } from './di/provider.js';
 export { inject, getParamInjections, getPropertyInjections } from './di/inject.js';
 export { Config } from './config/config.js';
-export { env, Env, type EnvRule } from './config/env.js';
+export { env, Env, loadEnv, type EnvRule } from './config/env.js';
 export { NamedMiddlewareRegistry } from './routing/named-middleware.js';
 export { RouteBuilder } from './routing/route-builder.js';
 export { RouteGroup } from './routing/route-group.js';
@@ -60,6 +63,9 @@ export {
   TooManyRequestsError,
   securityHeaders,
   csrf,
+  Hash,
+  hash,
+  hashVerify,
   type JwtAlgorithm,
   type JwtHeader,
   type JwtPayload,
@@ -73,6 +79,7 @@ export {
   type HstsOptions,
   type ContentSecurityPolicyDirectives,
   type CsrfOptions,
+  type ScryptOptions,
 } from './security/index.js';
 export {
   AeroWebSocket,
@@ -82,20 +89,42 @@ export {
 export {
   Database,
   DB,
+  MemoryDatabaseAdapter,
   Model,
   Relation,
+  computed,
   QueryBuilder,
   Schema,
   TableBlueprint,
   Migrator,
+  // Lifecycle Hook System
+  getHookRegistry,
+  registerHook,
+  ModelHookRegistry,
+  beforeCreate,
+  afterCreate,
+  beforeSave,
+  afterSave,
+  beforeUpdate,
+  afterUpdate,
+  beforeDelete,
+  afterDelete,
+  beforeFind,
+  afterFind,
+  beforeFetch,
+  afterFetch,
   type DatabaseAdapter,
   type DatabaseRow,
   type WhereClause,
   type JoinClause,
   type PaginationResult,
   type RelationDefinition,
+  type ManyToManyOptions,
+  type HasManyThroughOptions,
   type ColumnDefinition,
   type Migration,
+  type ModelHookEvent,
+  type ModelHookHandler,
 } from './database/index.js';
 export {
   Logger,
@@ -112,6 +141,10 @@ export {
   viewPlugin,
   type ViewDriver,
 } from './views/view.js';
+export {
+  vite,
+  type ViteOptions,
+} from './views/vite.js';
 export {
   Inertia,
   inertiaPlugin,
@@ -149,6 +182,7 @@ export {
   type QueuedJobRecord,
   type PushOptions,
   type WorkerOptions,
+  type FailedJobRecord,
   type QueueConfig,
 } from './queue/index.js';
 export {
@@ -203,6 +237,11 @@ export {
   InternalError,
 } from './core/errors.js';
 export {
+  renderErrorDashboard,
+  parseStackTrace,
+  type StackFrame,
+} from './core/error-dashboard.js';
+export {
   HookRunner,
   type OnRequestHook,
   type PreParsingHook,
@@ -246,3 +285,102 @@ export type {
 
 import { Aero } from './core/application.js';
 export default Aero;
+
+// ─── Hospital-Grade Enterprise Modules ───────────────────────────────────────
+
+// Auth System (Session + JWT + API Token Guards)
+export {
+  Auth,
+  AuthManager,
+  authManager,
+  authPlugin,
+  auth,
+  type AuthConfig,
+  type GuardDriverConfig,
+  type GuardDriverName,
+} from './auth/auth-manager.js';
+export {
+  SessionGuard,
+  type SessionGuardConfig,
+} from './auth/guards/session-guard.js';
+export {
+  JwtGuard,
+  type JwtGuardConfig,
+  type JwtTokenPair,
+} from './auth/guards/jwt-guard.js';
+export {
+  ApiTokenGuard,
+  type ApiTokenGuardConfig,
+  type ApiToken,
+  type GeneratedToken,
+} from './auth/guards/api-token-guard.js';
+export {
+  type GuardContract,
+  type AuthUser,
+  type LoginOptions,
+} from './auth/guards/guard.js';
+
+// RBAC / Bouncer Authorization
+export {
+  Bouncer,
+  BouncerManager,
+  bouncerManager,
+  bouncerPlugin,
+  requireRole,
+  requirePermission,
+  type PolicyContract,
+  type PolicyConstructor,
+  type PermissionStore,
+} from './auth/bouncer.js';
+
+// Session Management
+export {
+  SessionManager,
+  sessionPlugin,
+  type SessionConfig,
+} from './session/session-manager.js';
+export {
+  MemorySessionDriver,
+  FileSessionDriver,
+  RedisSessionDriver,
+  type SessionDriver,
+} from './session/session-driver.js';
+
+// Immutable Audit Trail (Section 38)
+export {
+  AuditTrail,
+  AuditTrailManager,
+  DatabaseAuditDriver,
+  MemoryAuditDriver,
+  type AuditLogEntry,
+  type AuditLogRecord,
+  type AuditAction,
+  type AuditDriver,
+} from './audit/audit-trail.js';
+
+// Domain Event Bus (Section 2 — Reactive Event Bus)
+export {
+  Events,
+  EventBus,
+  DomainEvent,
+  // Hospital Domain Events
+  PatientAdmittedEvent,
+  LabResultReadyEvent,
+  PaymentReceivedEvent,
+  CodeBlueTriggeredEvent,
+  ShiftClosedEvent,
+  LowStockAlertEvent,
+  type EventListener,
+  type EventListenerFn,
+} from './events/event-bus.js';
+
+// Cron Scheduler (Bank Reco, BMDC Alerts, Payroll triggers)
+export {
+  Schedule,
+  Scheduler,
+  TaskBuilder,
+  type TaskDefinition,
+  type TaskHandler,
+  type TaskRunRecord,
+} from './scheduler/scheduler.js';
+

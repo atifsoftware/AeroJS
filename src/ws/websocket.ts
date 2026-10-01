@@ -15,20 +15,32 @@ export interface WebSocketUpgradeHandler {
   (socket: AeroWebSocket, req: IncomingMessage): void | Promise<void>;
 }
 
+export interface WebSocketOptions {
+  maxPayload?: number;
+}
+
 /**
  * Lightweight Zero-Dependency RFC 6455 WebSocket Connection wrapper over Duplex stream.
  */
 export class AeroWebSocket extends EventEmitter {
   public socket: Duplex;
   public isClosed = false;
+  public readonly maxPayload: number;
   private buffer: Buffer = Buffer.alloc(0);
+  private currentFragments: Buffer[] = [];
+  private currentOpcode: number | null = null;
 
-  constructor(socket: Duplex) {
+  constructor(socket: Duplex, options: WebSocketOptions = {}) {
     super();
     this.socket = socket;
+    this.maxPayload = options.maxPayload ?? 5 * 1024 * 1024; // 5MB default
 
     this.socket.on('data', (chunk: Buffer) => {
       this.buffer = Buffer.concat([this.buffer, chunk]);
+      if (this.buffer.length > this.maxPayload) {
+        this.close(1009, 'Payload too large');
+        return;
+      }
       this.parseFrames();
     });
 
@@ -94,8 +106,17 @@ export class AeroWebSocket extends EventEmitter {
       const firstByte = this.buffer[0]!;
       const secondByte = this.buffer[1]!;
 
+      const isFin = (firstByte & 0x80) === 0x80;
       const opcode = firstByte & 0x0f;
       const isMasked = (secondByte & 0x80) === 0x80;
+
+      // RFC 6455 Section 5.1: Client-to-server frames MUST be masked.
+      if (!isMasked) {
+        this.close(1002, 'Protocol error: client frame must be masked');
+        this.emit('error', new Error('Protocol error: unmasked client frame received'));
+        return;
+      }
+
       let payloadLength = secondByte & 0x7f;
       let offset = 2;
 
@@ -109,7 +130,12 @@ export class AeroWebSocket extends EventEmitter {
         offset = 10;
       }
 
-      const maskLength = isMasked ? 4 : 0;
+      if (payloadLength > this.maxPayload) {
+        this.close(1009, 'Message payload exceeds limit');
+        return;
+      }
+
+      const maskLength = 4;
       const totalLength = offset + maskLength + payloadLength;
 
       if (this.buffer.length < totalLength) {
@@ -117,34 +143,20 @@ export class AeroWebSocket extends EventEmitter {
         return;
       }
 
-      let maskKey: Buffer | null = null;
-      if (isMasked) {
-        maskKey = this.buffer.subarray(offset, offset + 4);
-        offset += 4;
-      }
+      const maskKey = this.buffer.subarray(offset, offset + 4);
+      offset += 4;
 
       const payloadData = this.buffer.subarray(offset, offset + payloadLength);
       const unmaskedPayload = Buffer.alloc(payloadLength);
 
-      if (isMasked && maskKey) {
-        for (let i = 0; i < payloadLength; i++) {
-          unmaskedPayload[i] = payloadData[i]! ^ maskKey[i % 4]!;
-        }
-      } else {
-        payloadData.copy(unmaskedPayload);
+      for (let i = 0; i < payloadLength; i++) {
+        unmaskedPayload[i] = payloadData[i]! ^ maskKey[i % 4]!;
       }
 
       this.buffer = this.buffer.subarray(totalLength);
 
-      // Handle Opcode
-      if (opcode === 0x1) {
-        // Text frame
-        const text = unmaskedPayload.toString('utf-8');
-        this.emit('message', text);
-      } else if (opcode === 0x2) {
-        // Binary frame
-        this.emit('message', unmaskedPayload);
-      } else if (opcode === 0x8) {
+      // Handle Control Frames (Ping: 0x9, Pong: 0xA, Close: 0x8)
+      if (opcode === 0x8) {
         // Close frame
         this.close();
         this.emit('close');
@@ -154,9 +166,40 @@ export class AeroWebSocket extends EventEmitter {
         const pongHeader = Buffer.from([0x8a, 0x00]);
         this.socket.write(pongHeader);
         this.emit('ping');
+        continue;
       } else if (opcode === 0xa) {
         // Pong
         this.emit('pong');
+        continue;
+      }
+
+      // Handle Data Frames (Text: 0x1, Binary: 0x2, Continuation: 0x0)
+      if (opcode === 0x1 || opcode === 0x2) {
+        if (!isFin) {
+          this.currentOpcode = opcode;
+          this.currentFragments = [unmaskedPayload];
+        } else {
+          if (opcode === 0x1) {
+            this.emit('message', unmaskedPayload.toString('utf-8'));
+          } else {
+            this.emit('message', unmaskedPayload);
+          }
+        }
+      } else if (opcode === 0x0) {
+        // Continuation frame
+        this.currentFragments.push(unmaskedPayload);
+        if (isFin) {
+          const fullBuffer = Buffer.concat(this.currentFragments);
+          const finalOpcode = this.currentOpcode ?? 0x1;
+          this.currentFragments = [];
+          this.currentOpcode = null;
+
+          if (finalOpcode === 0x1) {
+            this.emit('message', fullBuffer.toString('utf-8'));
+          } else {
+            this.emit('message', fullBuffer);
+          }
+        }
       }
     }
   }

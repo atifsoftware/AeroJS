@@ -170,6 +170,11 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     return this;
   }
 
+  public type(contentType: string): this {
+    this.res.type(contentType);
+    return this;
+  }
+
   public set(
     nameOrHeaders: string | OutgoingHttpHeaders,
     value?: OutgoingHttpHeader

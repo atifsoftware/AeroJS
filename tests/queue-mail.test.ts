@@ -92,11 +92,14 @@ describe('AeroJS Background Queue & Mail System (Step 5)', () => {
       expect(FlakyJob.failCount).toBe(1);
       expect(FlakyJob.failedHookCalled).toBe(false);
 
-      // 2nd attempt: fails again, maxTries (2) reached -> triggers failed() and removes from queue
+      // 2nd attempt: fails again, maxTries (2) reached -> triggers failed() and moves to Dead Letter Queue
       await worker.runNext();
       expect(FlakyJob.failCount).toBe(2);
       expect(FlakyJob.failedHookCalled).toBe(true);
       expect(await Queue.driver().size()).toBe(0);
+      expect(worker.getFailedJobs()).toHaveLength(1);
+      expect(worker.getFailedJobs()[0]?.jobName).toBe('FlakyJob');
+      expect(worker.getFailedJobs()[0]?.exception).toContain('Third-party API timeout');
     });
 
     it('supports database queue driver with Aero DB persistence', async () => {

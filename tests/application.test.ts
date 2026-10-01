@@ -236,4 +236,51 @@ describe('Aero Application Core', () => {
     expect(res.status).toBe(200);
     expect(res.text()).toBe('core-pong');
   });
+
+  describe('Next.js Style Interactive Error Dashboard', () => {
+    it('renders rich interactive HTML Error Dashboard for browser requests when debug is enabled', async () => {
+      const errApp = new Aero({ debug: true });
+      errApp.get('/crash-me', () => {
+        throw new TypeError('Simulated database connection failure');
+      });
+
+      const client = createTestClient(errApp);
+      const res = await client.get('/crash-me', {
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+        },
+      });
+
+      expect(res.status).toBe(500);
+      expect(res.headers['content-type']).toContain('text/html');
+      const html = res.text();
+      expect(html).toContain('AeroJS Error Dashboard');
+      expect(html).toContain('TypeError');
+      expect(html).toContain('Simulated database connection failure');
+      expect(html).toContain('Call Stack');
+      expect(html).toContain('Copy Stack Trace');
+      expect(html).toContain('Request Context');
+    });
+
+    it('returns JSON format for API requests even in debug mode', async () => {
+      const errApp = new Aero({ debug: true });
+      errApp.get('/crash-json', () => {
+        throw new Error('API route failure');
+      });
+
+      const client = createTestClient(errApp);
+      const res = await client.get('/crash-json', {
+        headers: {
+          accept: 'application/json',
+        },
+      });
+
+      expect(res.status).toBe(500);
+      const json = res.json();
+      expect(json.error).toBeDefined();
+      expect(json.error.message).toBe('API route failure');
+      expect(json.error.stack).toBeDefined();
+    });
+  });
 });
+

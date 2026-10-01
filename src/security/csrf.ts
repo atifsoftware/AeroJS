@@ -9,6 +9,7 @@ import type { AeroContext } from '../core/context.js';
 import { ForbiddenError } from '../core/errors.js';
 
 export interface CsrfOptions {
+  secret?: string;
   cookieName?: string;
   headerName?: string;
   cookieOptions?: {
@@ -29,6 +30,23 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function generateToken(secret?: string): string {
+  const raw = crypto.randomBytes(32).toString('hex');
+  if (!secret) return raw;
+  const sig = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  return `${raw}.${sig}`;
+}
+
+function verifyTokenSignature(token: string, secret?: string): boolean {
+  if (!secret) return true;
+  const dotIndex = token.indexOf('.');
+  if (dotIndex === -1) return false;
+  const raw = token.slice(0, dotIndex);
+  const sig = token.slice(dotIndex + 1);
+  const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  return timingSafeEqual(sig, expected);
+}
+
 export function csrf(options: CsrfOptions = {}): Middleware {
   const cookieName = options.cookieName || '_csrf';
   const headerName = (options.headerName || 'x-csrf-token').toLowerCase();
@@ -43,8 +61,8 @@ export function csrf(options: CsrfOptions = {}): Middleware {
   return async (ctx: AeroContext, next: NextFunction) => {
     let token = ctx.cookies[cookieName];
 
-    if (!token) {
-      token = crypto.randomBytes(32).toString('hex');
+    if (!token || (options.secret && !verifyTokenSignature(token, options.secret))) {
+      token = generateToken(options.secret);
       ctx.res.setCookie(cookieName, token, cookieOpts);
     }
 
@@ -65,7 +83,11 @@ export function csrf(options: CsrfOptions = {}): Middleware {
 
     const providedToken = (headerToken || (typeof bodyToken === 'string' ? bodyToken : undefined));
 
-    if (!providedToken || !timingSafeEqual(token, providedToken)) {
+    if (
+      !providedToken ||
+      !timingSafeEqual(token, providedToken) ||
+      (options.secret && !verifyTokenSignature(providedToken, options.secret))
+    ) {
       throw new ForbiddenError('Invalid or missing CSRF token');
     }
 

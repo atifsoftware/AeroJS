@@ -16,7 +16,19 @@ export interface WorkerOptions {
   jobRegistry?: Record<string, new (...args: any[]) => Job>;
 }
 
+export interface FailedJobRecord {
+  id: string | number;
+  queue: string;
+  jobName: string;
+  payload: string;
+  attempts: number;
+  failedAt: Date;
+  exception: string;
+}
+
 export class QueueWorker {
+  public static readonly globalFailedJobs: FailedJobRecord[] = [];
+  public readonly failedJobs: FailedJobRecord[] = [];
   private driver: QueueDriver;
   private queue: string;
   private sleepMs: number;
@@ -136,7 +148,19 @@ export class QueueWorker {
         const delay = this.backoffSeconds * record.attempts;
         await this.driver.release(record.id, delay, this.queue);
       } else {
-        // Max retries reached -> call failed hook and remove
+        // Max retries reached -> record into Dead Letter Queue, call failed hook, and delete from active queue
+        const failedRecord: FailedJobRecord = {
+          id: record.id,
+          queue: this.queue,
+          jobName,
+          payload: record.payload,
+          attempts: record.attempts,
+          failedAt: new Date(),
+          exception: error.stack || error.message,
+        };
+        this.failedJobs.push(failedRecord);
+        QueueWorker.globalFailedJobs.push(failedRecord);
+
         if (typeof jobInstance.failed === 'function') {
           try {
             await jobInstance.failed(error);
@@ -147,5 +171,13 @@ export class QueueWorker {
         await this.driver.delete(record.id, this.queue);
       }
     }
+  }
+
+  public getFailedJobs(): FailedJobRecord[] {
+    return [...this.failedJobs];
+  }
+
+  public clearFailedJobs(): void {
+    this.failedJobs.length = 0;
   }
 }

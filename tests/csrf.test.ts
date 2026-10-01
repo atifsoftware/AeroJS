@@ -87,4 +87,38 @@ describe('Zero-Dependency CSRF Module', () => {
     expect(res.status).toBe(200);
     expect(res.text()).toBe('submitted');
   });
+
+  it('supports cryptographically signed HMAC CSRF tokens with a secret', async () => {
+    const app = new Aero();
+    app.use(csrf({ secret: 'super-secret-key-12345' }));
+    app.get('/form', (ctx) => {
+      ctx.send({ token: (ctx as any).csrfToken() });
+    });
+    app.post('/secure', (ctx) => ctx.send('secure-success'));
+
+    const client = createTestClient(app);
+    const getRes = await client.get('/form');
+    const token = getRes.json<any>().token;
+    expect(token).toContain('.');
+
+    // Valid signed token
+    const postRes = await client.post('/secure', {
+      headers: {
+        cookie: `_csrf=${token}`,
+        'x-csrf-token': token,
+      },
+    });
+    expect(postRes.status).toBe(200);
+    expect(postRes.text()).toBe('secure-success');
+
+    // Tampered token fails
+    const tamperedToken = token.slice(0, -4) + '0000';
+    const badRes = await client.post('/secure', {
+      headers: {
+        cookie: `_csrf=${tamperedToken}`,
+        'x-csrf-token': tamperedToken,
+      },
+    });
+    expect(badRes.status).toBe(403);
+  });
 });

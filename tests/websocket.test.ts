@@ -142,4 +142,51 @@ describe('Zero-Dependency WebSocket Module', () => {
     expect(written.readUInt16BE(2)).toBe(1000);
     expect(written.subarray(4).toString('utf-8')).toBe('Bye');
   });
+
+  it('rejects unmasked client frame per RFC 6455 section 5.1 with protocol error 1002', () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    let errorEmitted = false;
+    ws.on('error', (err) => {
+      errorEmitted = true;
+      expect(err.message).toContain('unmasked client frame');
+    });
+
+    // Unmasked Text frame: 0x81, length 2 (0x02, mask bit not set)
+    const unmaskedFrame = Buffer.from([0x81, 0x02, 0x48, 0x69]);
+    socket.emit('data', unmaskedFrame);
+
+    expect(ws.isClosed).toBe(true);
+    expect(errorEmitted).toBe(true);
+    const written = Buffer.concat(socket.written);
+    expect(written[0]).toBe(0x88); // Close opcode
+    expect(written.readUInt16BE(2)).toBe(1002);
+  });
+
+  it('assembles fragmented message using continuation frames (opcode 0x0)', async () => {
+    const socket = new MockDuplex();
+    const ws = new AeroWebSocket(socket);
+
+    const messagePromise = new Promise<string>((resolve) => {
+      ws.on('message', (msg) => resolve(msg));
+    });
+
+    // Frame 1: Text opcode (0x1), FIN=0 (0x01), Masked (0x80), Length 2 ('He')
+    // Mask key: [0x11, 0x22, 0x33, 0x44]
+    // Payload 'He' = [0x48 ^ 0x11, 0x65 ^ 0x22] = [0x59, 0x47]
+    const frame1 = Buffer.from([0x01, 0x82, 0x11, 0x22, 0x33, 0x44, 0x59, 0x47]);
+
+    // Frame 2: Continuation opcode (0x0), FIN=1 (0x80), Masked (0x80), Length 3 ('llo')
+    // Mask key: [0x11, 0x22, 0x33, 0x44]
+    // Payload 'llo' = [0x6c ^ 0x11, 0x6c ^ 0x22, 0x6f ^ 0x33] = [0x7d, 0x4e, 0x5c]
+    const frame2 = Buffer.from([0x80, 0x83, 0x11, 0x22, 0x33, 0x44, 0x7d, 0x4e, 0x5c]);
+
+    socket.emit('data', frame1);
+    socket.emit('data', frame2);
+
+    const message = await messagePromise;
+    expect(message).toBe('Hello');
+  });
 });
+

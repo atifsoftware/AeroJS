@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { Aero, Router, AeroContext, type ExtractRouteParams } from '../src/index.js';
+import { Aero, AeroJS, Router, AeroContext, type ExtractRouteParams } from '../src/index.js';
 
 describe('Phase 7: Type-Safe Routes and Enhanced urlFor', () => {
+  it('exports AeroJS alias matching Aero class', () => {
+    expect(AeroJS).toBe(Aero);
+    const app = new AeroJS();
+    expect(app).toBeInstanceOf(Aero);
+  });
   it('extracts route parameter types statically', () => {
     type Params1 = ExtractRouteParams<'/users/:id'>;
     type Params2 = ExtractRouteParams<'/users/:userId/posts/:postId'>;

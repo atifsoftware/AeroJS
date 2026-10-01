@@ -27,7 +27,7 @@ export interface TestResponse {
   readonly statusCode: number;
   readonly headers: Record<string, string | string[] | undefined>;
   readonly body: string;
-  json<T = unknown>(): T;
+  json<T = any>(): T;
   text(): string;
   buffer(): Buffer;
 }
@@ -149,7 +149,7 @@ export class TestClient {
           body: bodyStr,
           text: () => bodyStr,
           buffer: () => fullBuffer,
-          json: <T = unknown>() => {
+          json: <T = any>() => {
             if (!bodyStr) return {} as T;
             return JSON.parse(bodyStr) as T;
           },

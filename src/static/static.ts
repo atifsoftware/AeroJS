@@ -108,6 +108,12 @@ export function serveStatic<State = DefaultState>(options: StaticOptions): Middl
       filePath = join(rootDir, indexFile);
     }
 
+    // Defense-in-depth: Ensure resolved target never escapes rootDir
+    const resolvedPath = resolve(filePath);
+    if (!resolvedPath.startsWith(rootDir)) {
+      return ctx.status(403).text('Forbidden: Directory traversal attempt');
+    }
+
     let stat = existsSync(filePath) ? statSync(filePath) : null;
 
     if (stat && stat.isDirectory()) {

@@ -37,6 +37,8 @@ import {
   NotFoundError,
   MethodNotAllowedError,
 } from './errors.js';
+import { renderErrorDashboard } from './error-dashboard.js';
+import { loadEnv } from '../config/env.js';
 import {
   handleWebSocketUpgrade,
   type WebSocketUpgradeHandler,
@@ -69,9 +71,11 @@ export class ApplicationCore<State = DefaultState> {
   protected readonly replyDecorators: Map<string, unknown> = new Map();
 
   constructor(options: AeroOptions = {}) {
+    loadEnv();
+    const isDev = process.env.APP_DEBUG === 'true' || (process.env.APP_DEBUG !== 'false' && process.env.NODE_ENV !== 'production');
     this.router = new Router<State>(this.namedMiddleware);
     this.configOptions = {
-      debug: false,
+      debug: isDev,
       disableDefault404: false,
       bodyLimit: 1024 * 1024, // 1MB
       trustProxy: false,
@@ -407,25 +411,27 @@ export class ApplicationCore<State = DefaultState> {
     }
 
     try {
+      if (!this.isBooted && this.serviceProviders.length > 0) {
+        await this.boot();
+      }
+
       // 1. onRequest hooks
       await this.hookRunner.runOnRequest(ctx);
       if (res.isSent) return;
 
-      // 2. Parse request body if content-type present and method allows body
-      const methodsWithBody = ['POST', 'PUT', 'PATCH', 'DELETE'];
-      if (methodsWithBody.includes(req.method) && req.headers['content-type']) {
-        await this.hookRunner.runPreParsing(ctx);
-        ctx.body = await parseBody(rawReq, { limit: this.configOptions.bodyLimit });
-        if ((rawReq as any).files) {
-          ctx.req.files = (rawReq as any).files;
-        }
-      }
-
-      // 3. Match route
+      // 2. Match route first to avoid DoS body parsing on non-existent routes
       const match = this.router.match(req.method, req.path);
 
       if (!match) {
         if (this.middlewares.length > 0) {
+          const methodsWithBody = ['POST', 'PUT', 'PATCH', 'DELETE'];
+          if (methodsWithBody.includes(req.method) && req.headers['content-type'] && ctx.body === undefined) {
+            await this.hookRunner.runPreParsing(ctx);
+            ctx.body = await parseBody(rawReq, { limit: this.configOptions.bodyLimit });
+            if ((rawReq as any).files) {
+              ctx.req.files = (rawReq as any).files;
+            }
+          }
           const globalPipeline = compose(this.middlewares);
           await globalPipeline(ctx);
           if (res.isSent || res.headersSent || res.payload !== undefined) {
@@ -463,6 +469,16 @@ export class ApplicationCore<State = DefaultState> {
       }
 
       ctx.params = match.params;
+
+      // 3. Parse request body if content-type present and method allows body
+      const methodsWithBody = ['POST', 'PUT', 'PATCH', 'DELETE'];
+      if (methodsWithBody.includes(req.method) && req.headers['content-type']) {
+        await this.hookRunner.runPreParsing(ctx);
+        ctx.body = await parseBody(rawReq, { limit: this.configOptions.bodyLimit });
+        if ((rawReq as any).files) {
+          ctx.req.files = (rawReq as any).files;
+        }
+      }
 
       // 4. preValidation hooks
       await this.hookRunner.runPreValidation(ctx);
@@ -553,6 +569,18 @@ export class ApplicationCore<State = DefaultState> {
       details = error.details;
     }
 
+    // Next.js style Interactive Developer Error Dashboard for browser requests
+    const isHtmlRequest = Boolean(
+      ctx.req.headers.accept?.includes('text/html') &&
+      !ctx.req.headers['x-inertia']
+    );
+
+    if (this.configOptions.debug && isHtmlRequest) {
+      const html = renderErrorDashboard(error, ctx, { status, code });
+      ctx.res.status(status).html(html);
+      return;
+    }
+
     ctx.res.status(status).send({
       error: {
         message: error.message || 'Internal Server Error',
@@ -575,6 +603,9 @@ export class ApplicationCore<State = DefaultState> {
     hostOrCallback?: string | (() => void),
     callback?: () => void
   ): Server {
+    if (!this.isBooted && this.serviceProviders.length > 0) {
+      void this.boot();
+    }
     const server = createServer(this.callback());
     this.server = server;
     server.on('upgrade', (req, socket, head) => {

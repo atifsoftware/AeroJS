@@ -10,9 +10,14 @@ import { QueryBuilder } from './query-builder.js';
 export interface DatabaseRow extends Record<string, any> {}
 
 export interface DatabaseAdapter {
+  dialect?: string;
   query<T = DatabaseRow>(sql: string, bindings?: unknown[]): Promise<T[]>;
   execute(sql: string, bindings?: unknown[]): Promise<{ insertId?: number | string; affectedRows: number }>;
   transaction<T>(callback: (trx: DatabaseAdapter) => Promise<T>): Promise<T>;
+  beginTransaction?(): Promise<DatabaseAdapter>;
+  commit?(): Promise<void>;
+  rollback?(): Promise<void>;
+  table?<T extends DatabaseRow = DatabaseRow>(name: string): QueryBuilder<T>;
   close(): Promise<void>;
 }
 
@@ -21,6 +26,7 @@ export interface DatabaseAdapter {
  * Zero external dependencies. Ideal for unit tests, rapid prototyping, and embedded operation.
  */
 export class MemoryDatabaseAdapter implements DatabaseAdapter {
+  public readonly dialect = 'memory';
   private tables = new Map<string, DatabaseRow[]>();
   private autoIncrements = new Map<string, number>();
 
@@ -31,6 +37,10 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
       this.tables.set(table, rows);
     }
     return rows;
+  }
+
+  public table<T extends DatabaseRow = DatabaseRow>(name: string): QueryBuilder<T> {
+    return new QueryBuilder<T>(name, this);
   }
 
   public async query<T = DatabaseRow>(sql: string, bindings: unknown[] = []): Promise<T[]> {
@@ -71,8 +81,27 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
   }
 
   public async transaction<T>(callback: (trx: DatabaseAdapter) => Promise<T>): Promise<T> {
-    return callback(this);
+    const backupTables = new Map<string, DatabaseRow[]>();
+    for (const [t, rows] of this.tables.entries()) {
+      backupTables.set(t, rows.map((r) => ({ ...r })));
+    }
+    const backupAuto = new Map<string, number>(this.autoIncrements);
+    try {
+      return await callback(this);
+    } catch (err) {
+      this.tables = backupTables;
+      this.autoIncrements = backupAuto;
+      throw err;
+    }
   }
+
+  public async beginTransaction(): Promise<DatabaseAdapter> {
+    return this;
+  }
+
+  public async commit(): Promise<void> {}
+
+  public async rollback(): Promise<void> {}
 
   public async close(): Promise<void> {
     this.tables.clear();
@@ -102,22 +131,84 @@ export class Database {
   /**
    * Start a fluent QueryBuilder on a specific table.
    */
-  public static table<T extends DatabaseRow = DatabaseRow>(name: string, connectionName = 'default'): QueryBuilder<T> {
-    return new QueryBuilder<T>(name, this.getAdapter(connectionName));
+  public static table<T extends DatabaseRow = DatabaseRow>(
+    name: string,
+    connectionOrAdapter: string | DatabaseAdapter = 'default'
+  ): QueryBuilder<T> {
+    const adapter = typeof connectionOrAdapter === 'string'
+      ? this.getAdapter(connectionOrAdapter)
+      : connectionOrAdapter;
+    return new QueryBuilder<T>(name, adapter);
   }
 
   /**
    * Run raw SQL query.
    */
-  public static async query<T = DatabaseRow>(sql: string, bindings: unknown[] = [], connectionName = 'default'): Promise<T[]> {
-    return this.getAdapter(connectionName).query<T>(sql, bindings);
+  public static async query<T = DatabaseRow>(
+    sql: string,
+    bindings: unknown[] = [],
+    connectionOrAdapter: string | DatabaseAdapter = 'default'
+  ): Promise<T[]> {
+    const adapter = typeof connectionOrAdapter === 'string'
+      ? this.getAdapter(connectionOrAdapter)
+      : connectionOrAdapter;
+    return adapter.query<T>(sql, bindings);
+  }
+
+  /**
+   * Run raw SQL execute (INSERT, UPDATE, DELETE).
+   */
+  public static async execute(
+    sql: string,
+    bindings: unknown[] = [],
+    connectionOrAdapter: string | DatabaseAdapter = 'default'
+  ): Promise<{ insertId?: number | string; affectedRows: number }> {
+    const adapter = typeof connectionOrAdapter === 'string'
+      ? this.getAdapter(connectionOrAdapter)
+      : connectionOrAdapter;
+    return adapter.execute(sql, bindings);
   }
 
   /**
    * Run atomic database transaction.
    */
-  public static async transaction<T>(callback: (trx: DatabaseAdapter) => Promise<T>, connectionName = 'default'): Promise<T> {
-    return this.getAdapter(connectionName).transaction(callback);
+  public static async transaction<T>(
+    callback: (trx: DatabaseAdapter) => Promise<T>,
+    connectionOrAdapter: string | DatabaseAdapter = 'default'
+  ): Promise<T> {
+    const adapter = typeof connectionOrAdapter === 'string'
+      ? this.getAdapter(connectionOrAdapter)
+      : connectionOrAdapter;
+    return adapter.transaction(callback);
+  }
+
+  /**
+   * Manually begin a new database transaction.
+   */
+  public static async beginTransaction(connectionName = 'default'): Promise<DatabaseAdapter> {
+    const adapter = this.getAdapter(connectionName);
+    if (typeof adapter.beginTransaction === 'function') {
+      return adapter.beginTransaction();
+    }
+    return adapter;
+  }
+
+  /**
+   * Commit a transaction.
+   */
+  public static async commit(trx?: DatabaseAdapter): Promise<void> {
+    if (trx && typeof trx.commit === 'function') {
+      await trx.commit();
+    }
+  }
+
+  /**
+   * Rollback a transaction.
+   */
+  public static async rollback(trx?: DatabaseAdapter): Promise<void> {
+    if (trx && typeof trx.rollback === 'function') {
+      await trx.rollback();
+    }
   }
 
   /**

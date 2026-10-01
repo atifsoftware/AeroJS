@@ -5,3 +5,4 @@
 
 export * from './runner.js';
 export * from './commands/make.js';
+export * from './commands/init.js';

@@ -41,3 +41,15 @@ export {
   csrf,
   type CsrfOptions,
 } from './csrf.js';
+
+export {
+  Hash,
+  hash,
+  hashVerify,
+  type ScryptOptions,
+} from './hash.js';
+
+export {
+  cors,
+  type CorsOptions,
+} from '../middleware/cors.js';

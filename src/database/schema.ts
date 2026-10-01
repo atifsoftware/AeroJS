@@ -85,6 +85,12 @@ export class TableBlueprint {
     return this;
   }
 
+  public notNull(): this {
+    const last = this.columns[this.columns.length - 1];
+    if (last) last.isNullable = false;
+    return this;
+  }
+
   public nullable(): this {
     const last = this.columns[this.columns.length - 1];
     if (last) last.isNullable = true;
@@ -139,9 +145,21 @@ export class Schema {
     await Database.getAdapter(connection).execute(sql);
   }
 
+  public static async create(
+    tableName: string,
+    callback: (table: TableBlueprint) => void,
+    connection = 'default'
+  ): Promise<void> {
+    return this.createTable(tableName, callback, connection);
+  }
+
   public static async dropTableIfExists(tableName: string, connection = 'default'): Promise<void> {
     const sql = `DROP TABLE IF EXISTS ${tableName}`;
     await Database.getAdapter(connection).execute(sql);
+  }
+
+  public static async dropIfExists(tableName: string, connection = 'default'): Promise<void> {
+    return this.dropTableIfExists(tableName, connection);
   }
 }
 

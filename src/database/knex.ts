@@ -7,13 +7,21 @@
 
 import type { DatabaseAdapter, DatabaseRow } from './connection.js';
 import { Database, DB } from './connection.js';
+import { QueryBuilder } from './query-builder.js';
 import { Logger } from '../logging/logger.js';
 
 export class KnexDatabaseAdapter implements DatabaseAdapter {
   public readonly knex: any;
+  public readonly dialect: string;
 
   constructor(knexInstance: any) {
     this.knex = knexInstance;
+    const client = knexInstance?.client?.dialect || knexInstance?.client?.config?.client || 'default';
+    this.dialect = String(client).toLowerCase();
+  }
+
+  public table<T extends DatabaseRow = DatabaseRow>(name: string): QueryBuilder<T> {
+    return new QueryBuilder<T>(name, this);
   }
 
   public async query<T = DatabaseRow>(sql: string, bindings: unknown[] = []): Promise<T[]> {
@@ -48,6 +56,23 @@ export class KnexDatabaseAdapter implements DatabaseAdapter {
     });
   }
 
+  public async beginTransaction(): Promise<KnexDatabaseAdapter> {
+    const trx = await this.knex.transaction();
+    return new KnexDatabaseAdapter(trx);
+  }
+
+  public async commit(): Promise<void> {
+    if (typeof this.knex.commit === 'function') {
+      await this.knex.commit();
+    }
+  }
+
+  public async rollback(): Promise<void> {
+    if (typeof this.knex.rollback === 'function') {
+      await this.knex.rollback();
+    }
+  }
+
   public async close(): Promise<void> {
     if (typeof this.knex.destroy === 'function') {
       await this.knex.destroy();
@@ -73,11 +98,12 @@ export class KnexDatabaseAdapter implements DatabaseAdapter {
 
   private normalizeExecuteResult(result: any): { insertId?: number | string; affectedRows: number } {
     if (!result) return { affectedRows: 0 };
-    // MySQL / SQLite
-    if (result.insertId !== undefined || result.affectedRows !== undefined) {
+    // MySQL / SQLite (result or result[0] if MySQL2 returns [ResultSetHeader, fields])
+    const header = Array.isArray(result) ? result[0] : result;
+    if (header && (header.insertId !== undefined || header.affectedRows !== undefined)) {
       return {
-        insertId: result.insertId,
-        affectedRows: result.affectedRows ?? 1,
+        insertId: header.insertId,
+        affectedRows: header.affectedRows ?? 1,
       };
     }
     // PostgreSQL: result.rowCount

@@ -1,41 +1,97 @@
 /**
  * @file model.ts
- * @description Eloquent / Lucid-style Active Record ORM for AeroJS.
- * Features auto-wiring proxies, relationships (hasMany, belongsTo, hasOne),
- * eager loading (N+1 query solution), soft deletes, lifecycle hooks, and serialization.
+ * @description Lucid-inspired Active Record ORM for AeroJS. Completely rebuilt with:
+ *
+ *  ✅ EXISTING: hasOne, hasMany, belongsTo, softDelete, eager loading
+ *  🆕 NEW: manyToMany (pivot table), hasManyThrough
+ *  🆕 NEW: Static Lifecycle Hooks (@beforeSave, @afterCreate, etc.)
+ *  🆕 NEW: Query Scopes (Model.query().active().byBranch(1))
+ *  🆕 NEW: Computed Properties ($get prefix)
+ *  🆕 NEW: $dirty tracking (know exactly what changed)
+ *  🆕 NEW: $original + isDirty(field) helpers
+ *
+ * Hospital uses:
+ *   - Doctor ↔ Specialization (manyToMany via doctor_specializations)
+ *   - Hospital → Wards → Beds (hasManyThrough)
+ *   - Patient.query().active().opd().byBranch(1).paginate(1, 20)
+ *   - @beforeCreate() → generate MRN
+ *   - @beforeDelete() → block hard-delete on medical records
  */
 
-import { Database, type DatabaseRow } from './connection.js';
+import { Database, type DatabaseRow, type DatabaseAdapter } from './connection.js';
 import { QueryBuilder } from './query-builder.js';
 import { NotFoundError } from '../core/errors.js';
+import { getHookRegistry } from './model-hooks.js';
+
+// ─── Relation Types ───────────────────────────────────────────────────────────
 
 export interface RelationDefinition {
-  type: 'hasMany' | 'hasOne' | 'belongsTo';
+  type: 'hasMany' | 'hasOne' | 'belongsTo' | 'manyToMany' | 'hasManyThrough';
   RelatedModel: typeof Model | any;
   foreignKey: string;
   localKey: string;
   parentInstance: Model;
+  // manyToMany
+  pivotTable?: string;
+  pivotForeignKey?: string;
+  pivotRelatedKey?: string;
+  pivotColumns?: string[];
+  // hasManyThrough
+  ThroughModel?: typeof Model | any;
+  throughForeignKey?: string;
+  throughLocalKey?: string;
 }
 
+// ─── ManyToMany Options ───────────────────────────────────────────────────────
+
+export interface ManyToManyOptions {
+  pivotTable?: string;
+  pivotForeignKey?: string;
+  pivotRelatedKey?: string;
+  /** Extra pivot columns to include in the result (e.g. 'attached_at', 'role') */
+  pivotColumns?: string[];
+  localKey?: string;
+  relatedKey?: string;
+}
+
+// ─── HasManyThrough Options ───────────────────────────────────────────────────
+
+export interface HasManyThroughOptions {
+  foreignKey?: string;      // FK on through model pointing to this model
+  throughForeignKey?: string; // FK on target model pointing to through model
+  localKey?: string;
+  throughLocalKey?: string;
+}
+
+// ─── Relation Class ───────────────────────────────────────────────────────────
+
 export class Relation implements PromiseLike<any> {
-  public type: 'hasMany' | 'hasOne' | 'belongsTo';
+  public type: RelationDefinition['type'];
   public RelatedModel: typeof Model | any;
   public foreignKey: string;
   public localKey: string;
   public parentInstance: Model;
+  public pivotTable?: string;
+  public pivotForeignKey?: string;
+  public pivotRelatedKey?: string;
+  public pivotColumns?: string[];
+  public ThroughModel?: typeof Model | any;
+  public throughForeignKey?: string;
+  public throughLocalKey?: string;
 
-  constructor(
-    type: 'hasMany' | 'hasOne' | 'belongsTo',
-    RelatedModel: typeof Model | any,
-    foreignKey: string,
-    localKey: string,
-    parentInstance: Model
-  ) {
-    this.type = type;
-    this.RelatedModel = RelatedModel;
-    this.foreignKey = foreignKey;
-    this.localKey = localKey;
-    this.parentInstance = parentInstance;
+  constructor(def: RelationDefinition) {
+    this.type = def.type;
+    this.RelatedModel = def.RelatedModel;
+    this.foreignKey = def.foreignKey;
+    this.localKey = def.localKey;
+    this.parentInstance = def.parentInstance;
+    this.pivotTable = def.pivotTable;
+    this.pivotForeignKey = def.pivotForeignKey;
+    this.pivotRelatedKey = def.pivotRelatedKey;
+    this.pivotColumns = def.pivotColumns;
+    this.ThroughModel = def.ThroughModel;
+    this.throughForeignKey = def.throughForeignKey;
+    this.throughLocalKey = def.throughLocalKey;
   }
 
   public async then<TResult1 = any, TResult2 = never>(
@@ -43,49 +99,170 @@ export class Relation implements PromiseLike<any> {
     onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null
   ): Promise<TResult1 | TResult2> {
     try {
-      let result: any;
-      const qb = this.RelatedModel.query();
-
-      if (this.type === 'belongsTo') {
-        const foreignVal = this.parentInstance.get(this.foreignKey);
-        if (foreignVal === undefined || foreignVal === null) {
-          result = null;
-        } else {
-          result = await qb.where(this.localKey, foreignVal).first();
-        }
-      } else {
-        const localValue = this.parentInstance.get(this.localKey);
-        if (localValue === undefined || localValue === null) {
-          result = this.type === 'hasMany' ? [] : null;
-        } else {
-          if (this.type === 'hasMany') {
-            result = await qb.where(this.foreignKey, localValue).get();
-          } else {
-            result = await qb.where(this.foreignKey, localValue).first();
-          }
-        }
-      }
+      const result = await this._resolve();
       return onfulfilled ? onfulfilled(result) : result;
     } catch (err) {
       if (onrejected) return onrejected(err);
       throw err;
     }
   }
+
+  public async _resolve(): Promise<any> {
+    const qb = this.RelatedModel.query();
+
+    switch (this.type) {
+      case 'belongsTo': {
+        const foreignVal = this.parentInstance.get(this.foreignKey);
+        if (foreignVal === undefined || foreignVal === null) return null;
+        return qb.where(this.localKey, foreignVal).first();
+      }
+      case 'hasOne': {
+        const localVal = this.parentInstance.get(this.localKey);
+        if (localVal === undefined || localVal === null) return null;
+        return qb.where(this.foreignKey, localVal).first();
+      }
+      case 'hasMany': {
+        const localVal = this.parentInstance.get(this.localKey);
+        if (localVal === undefined || localVal === null) return [];
+        return qb.where(this.foreignKey, localVal).get();
+      }
+      case 'manyToMany': {
+        return this._resolveManyToMany();
+      }
+      case 'hasManyThrough': {
+        return this._resolveHasManyThrough();
+      }
+      default:
+        return null;
+    }
+  }
+
+  private async _resolveManyToMany(): Promise<any[]> {
+    const localVal = this.parentInstance.get(this.localKey);
+    if (localVal === undefined || localVal === null) return [];
+
+    const pivotTable = this.pivotTable!;
+    const pivotFK = this.pivotForeignKey!;
+    const pivotRK = this.pivotRelatedKey!;
+    const relatedTable = this.RelatedModel.getTable();
+    const relatedPK = this.RelatedModel.primaryKey;
+    const pivotExtra = this.pivotColumns ?? [];
+
+    // SELECT related.*, pivot.col1, pivot.col2 FROM related
+    // INNER JOIN pivot ON related.id = pivot.pivot_related_key
+    // WHERE pivot.pivot_foreign_key = localVal
+    const selectCols = [
+      `${relatedTable}.*`,
+      ...pivotExtra.map((c: string) => `${pivotTable}.${c} as pivot_${c}`),
+    ];
+
+    const rows = await Database.table(relatedTable)
+      .select(...selectCols)
+      .join(pivotTable, `${relatedTable}.${relatedPK}`, '=', `${pivotTable}.${pivotRK}`)
+      .where(`${pivotTable}.${pivotFK}`, localVal)
+      .get();
+
+    return rows.map((r: any) => {
+      const inst = new this.RelatedModel(r);
+      inst._exists = true;
+      inst._original = { ...r };
+      // Attach pivot data
+      if (pivotExtra.length > 0) {
+        const pivot: Record<string, any> = {};
+        for (const c of pivotExtra) {
+          pivot[c] = r[`pivot_${c}`];
+          delete inst._attributes[`pivot_${c}`];
+        }
+        inst._relations['$pivot'] = pivot;
+      }
+      return inst;
+    });
+  }
+
+  private async _resolveHasManyThrough(): Promise<any[]> {
+    const localVal = this.parentInstance.get(this.localKey);
+    if (localVal === undefined || localVal === null) return [];
+
+    const throughTable = this.ThroughModel!.getTable();
+    const throughFK = this.throughForeignKey!;   // FK on through model → parent
+    const throughLK = this.throughLocalKey!;     // FK on related model → through
+    const relatedTable = this.RelatedModel.getTable();
+    const relatedPK = this.RelatedModel.primaryKey;
+
+    // SELECT related.* FROM related
+    // INNER JOIN through ON related.through_fk = through.id
+    // WHERE through.parent_fk = localVal
+    const rows = await Database.table(relatedTable)
+      .select(`${relatedTable}.*`)
+      .join(throughTable, `${relatedTable}.${throughLK}`, '=', `${throughTable}.${this.ThroughModel!.primaryKey}`)
+      .where(`${throughTable}.${throughFK}`, localVal)
+      .get();
+
+    return rows.map((r: any) => {
+      const inst = new this.RelatedModel(r);
+      inst._exists = true;
+      inst._original = { ...r };
+      return inst;
+    });
+  }
 }
 
+// ─── Computed Property Decorator ──────────────────────────────────────────────
+
 /**
- * Aero Active Record Model Base Class
+ * Marks a getter as a "computed property" — included in toJSON() output.
+ * Computed properties are derived from other attributes (not stored in DB).
+ *
+ * @example
+ * class Patient extends Model {
+ *   @computed()
+ *   get age(): number {
+ *     const dob = new Date(this.date_of_birth);
+ *     return Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
+ *   }
+ *
+ *   @computed()
+ *   get fullName(): string {
+ *     return `${this.first_name} ${this.last_name}`;
+ *   }
+ * }
  */
+export function computed(): PropertyDecorator {
+  return function (target: any, propertyKey: string | symbol) {
+    const ModelProto = target;
+    if (!ModelProto._computedProperties) {
+      ModelProto._computedProperties = [];
+    }
+    ModelProto._computedProperties.push(String(propertyKey));
+  };
+}
+
+// ─── Model Base Class ─────────────────────────────────────────────────────────
+
 export class Model {
+  // ── Static Configuration ────────────────────────────────────────────────────
   public static table = '';
   public static primaryKey = 'id';
   public static hidden: string[] = [];
   public static fillable: string[] = [];
   public static softDeletes = false;
+  public static timestamps: boolean | { createdAt?: string; updatedAt?: string } = true;
   public static connection = 'default';
 
+  /**
+   * Global query scopes automatically applied to every query.
+   *
+   * @example
+   * class Patient extends Model {
+   *   public static override globalScopes = [BranchScope, ActiveScope];
+   * }
+   */
+  public static globalScopes: Array<(qb: any, ctx?: any) => void> = [];
+
+  // ── Instance State ──────────────────────────────────────────────────────────
   public _attributes: Record<string, any>;
   public _original: Record<string, any>;
+  public _dirty: Record<string, boolean>;
   public _exists = false;
   public _relations: Record<string, any> = {};
   [key: string]: any;
@@ -93,39 +270,33 @@ export class Model {
   constructor(attributes: Record<string, any> = {}) {
     this._attributes = {};
     this._original = {};
+    this._dirty = {};
     this._exists = false;
     this._relations = {};
 
     this.fill(attributes);
 
-    // Return Proxy so properties can be accessed and mutated directly: user.email = '...'
     return new Proxy(this, {
       get(target: any, prop: string | symbol, receiver: any) {
-        if (typeof prop === 'symbol') {
-          return Reflect.get(target, prop, receiver);
-        }
-        if (target._relations && prop in target._relations) {
-          return target._relations[prop];
-        }
+        if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
+        if (target._relations && prop in target._relations) return target._relations[prop];
         if (prop in target) {
           const val = Reflect.get(target, prop, receiver);
-          if (typeof val === 'function' && prop !== 'constructor') {
-            return val.bind(target);
-          }
+          if (typeof val === 'function' && prop !== 'constructor') return val.bind(target);
           return val;
         }
         return target.get(String(prop));
       },
       set(target: any, prop: string | symbol, value: any, receiver: any) {
-        if (typeof prop === 'symbol') {
-          return Reflect.set(target, prop, value, receiver);
-        }
-        if (prop in target && !['_attributes', '_original', '_relations', '_exists'].includes(String(prop))) {
-          const desc = Object.getOwnPropertyDescriptor(target, prop) ||
+        if (typeof prop === 'symbol') return Reflect.set(target, prop, value, receiver);
+        if (
+          prop in target &&
+          !['_attributes', '_original', '_dirty', '_relations', '_exists'].includes(String(prop))
+        ) {
+          const desc =
+            Object.getOwnPropertyDescriptor(target, prop) ||
             Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), prop);
-          if (desc && (desc.get || desc.set)) {
-            return Reflect.set(target, prop, value, receiver);
-          }
+          if (desc && (desc.get || desc.set)) return Reflect.set(target, prop, value, receiver);
         }
         target.set(String(prop), value);
         return true;
@@ -149,8 +320,26 @@ export class Model {
   }
 
   public set(key: string, value: any): this {
+    if (this._exists && this._original[key] !== value) {
+      this._dirty[key] = true;
+    }
     this._attributes[key] = value;
     return this;
+  }
+
+  /** Returns true if the given field has changed since last save. */
+  public isDirty(field?: string): boolean {
+    if (field) return !!this._dirty[field];
+    return Object.keys(this._dirty).length > 0;
+  }
+
+  /** Returns all changed attributes since last save. */
+  public getDirty(): Record<string, any> {
+    const result: Record<string, any> = {};
+    for (const key of Object.keys(this._dirty)) {
+      result[key] = this._attributes[key];
+    }
+    return result;
   }
 
   public getAttributes(): Record<string, any> {
@@ -164,46 +353,238 @@ export class Model {
   public static getTable(): string {
     if (this.table) return this.table;
     const name = this.name || 'Model';
-    // Snake case and pluralize
-    const snake = name.replace(/([A-Z])/g, (m, p1, offset) => {
-      return offset > 0 ? '_' + p1.toLowerCase() : p1.toLowerCase();
-    });
+    const snake = name.replace(/([A-Z])/g, (m, p1, offset) =>
+      offset > 0 ? '_' + p1.toLowerCase() : p1.toLowerCase()
+    );
     return snake.endsWith('s') ? snake : `${snake}s`;
   }
 
-  /**
-   * HasMany Relationship
-   */
+  // ─── Relationships ──────────────────────────────────────────────────────────
+
   public hasMany(RelatedModel: typeof Model | any, foreignKey?: string, localKey?: string): Relation {
-    const fk = foreignKey || `${this.constructor.name.toLowerCase()}_id`;
-    const lk = localKey || (this.constructor as typeof Model).primaryKey;
-    return new Relation('hasMany', RelatedModel, fk, lk, this);
+    return new Relation({
+      type: 'hasMany',
+      RelatedModel,
+      foreignKey: foreignKey || `${this.constructor.name.toLowerCase()}_id`,
+      localKey: localKey || (this.constructor as typeof Model).primaryKey,
+      parentInstance: this,
+    });
   }
 
-  /**
-   * BelongsTo Relationship
-   */
-  public belongsTo(RelatedModel: typeof Model | any, foreignKey?: string, ownerKey?: string): Relation {
-    const fk = foreignKey || `${RelatedModel.name.toLowerCase()}_id`;
-    const ok = ownerKey || RelatedModel.primaryKey;
-    return new Relation('belongsTo', RelatedModel, fk, ok, this);
-  }
-
-  /**
-   * HasOne Relationship
-   */
   public hasOne(RelatedModel: typeof Model | any, foreignKey?: string, localKey?: string): Relation {
-    const fk = foreignKey || `${this.constructor.name.toLowerCase()}_id`;
-    const lk = localKey || (this.constructor as typeof Model).primaryKey;
-    return new Relation('hasOne', RelatedModel, fk, lk, this);
+    return new Relation({
+      type: 'hasOne',
+      RelatedModel,
+      foreignKey: foreignKey || `${this.constructor.name.toLowerCase()}_id`,
+      localKey: localKey || (this.constructor as typeof Model).primaryKey,
+      parentInstance: this,
+    });
+  }
+
+  public belongsTo(RelatedModel: typeof Model | any, foreignKey?: string, ownerKey?: string): Relation {
+    return new Relation({
+      type: 'belongsTo',
+      RelatedModel,
+      foreignKey: foreignKey || `${RelatedModel.name.toLowerCase()}_id`,
+      localKey: ownerKey || RelatedModel.primaryKey,
+      parentInstance: this,
+    });
   }
 
   /**
-   * Starts a Model QueryBuilder with eager-loading and soft-deletes applied.
+   * ManyToMany Relationship via a pivot table.
+   *
+   * @example
+   * // Doctor ↔ Specialization (pivot: doctor_specializations)
+   * public specializations() {
+   *   return this.manyToMany(Specialization, {
+   *     pivotTable: 'doctor_specializations',
+   *     pivotForeignKey: 'doctor_id',
+   *     pivotRelatedKey: 'specialization_id',
+   *     pivotColumns: ['certified_at'], // extra pivot columns
+   *   });
+   * }
+   *
+   * // Patient ↔ ICD-11 Diagnosis (pivot: patient_diagnoses)
+   * public diagnoses() {
+   *   return this.manyToMany(Diagnosis, {
+   *     pivotTable: 'patient_diagnoses',
+   *     pivotForeignKey: 'patient_id',
+   *     pivotRelatedKey: 'diagnosis_code',
+   *   });
+   * }
+   *
+   * // OT Surgery ↔ Surgeon team (pivot: ot_surgery_doctors)
+   * public surgeons() {
+   *   return this.manyToMany(Doctor, {
+   *     pivotTable: 'ot_surgery_doctors',
+   *     pivotForeignKey: 'surgery_id',
+   *     pivotRelatedKey: 'doctor_id',
+   *     pivotColumns: ['role'], // primary_surgeon, assistant, anesthesiologist
+   *   });
+   * }
    */
-  public static query(): any {
+  public manyToMany(
+    RelatedModel: typeof Model | any,
+    options: ManyToManyOptions = {}
+  ): Relation {
+    const Ctor = this.constructor as typeof Model;
+    const thisName = Ctor.name.toLowerCase();
+    const relatedName = RelatedModel.name.toLowerCase();
+    const pivotTable = options.pivotTable ??
+      [thisName, relatedName].sort().join('_') + 's';
+
+    return new Relation({
+      type: 'manyToMany',
+      RelatedModel,
+      foreignKey: options.localKey || Ctor.primaryKey,
+      localKey: options.localKey || Ctor.primaryKey,
+      parentInstance: this,
+      pivotTable,
+      pivotForeignKey: options.pivotForeignKey ?? `${thisName}_id`,
+      pivotRelatedKey: options.pivotRelatedKey ?? `${relatedName}_id`,
+      pivotColumns: options.pivotColumns ?? [],
+    });
+  }
+
+  /**
+   * HasManyThrough Relationship.
+   *
+   * @example
+   * // Hospital has many Beds through Wards
+   * public beds() {
+   *   return this.hasManyThrough(Bed, Ward, {
+   *     foreignKey: 'hospital_id',       // FK on Ward pointing to Hospital
+   *     throughForeignKey: 'ward_id',    // FK on Bed pointing to Ward
+   *   });
+   * }
+   *
+   * // Country has many Patients through Hospitals
+   * public patients() {
+   *   return this.hasManyThrough(Patient, Hospital, {
+   *     foreignKey: 'country_id',
+   *     throughForeignKey: 'hospital_id',
+   *   });
+   * }
+   */
+  public hasManyThrough(
+    RelatedModel: typeof Model | any,
+    ThroughModel: typeof Model | any,
+    options: HasManyThroughOptions = {}
+  ): Relation {
+    const Ctor = this.constructor as typeof Model;
+    const throughName = ThroughModel.name.toLowerCase();
+    const relatedName = RelatedModel.name.toLowerCase();
+
+    return new Relation({
+      type: 'hasManyThrough',
+      RelatedModel,
+      ThroughModel,
+      foreignKey: options.foreignKey ?? `${Ctor.name.toLowerCase()}_id`,
+      localKey: options.localKey ?? Ctor.primaryKey,
+      parentInstance: this,
+      throughForeignKey: options.foreignKey ?? `${Ctor.name.toLowerCase()}_id`,
+      throughLocalKey: options.throughForeignKey ?? `${throughName}_id`,
+    });
+  }
+
+  // ─── ManyToMany Pivot Helpers ───────────────────────────────────────────────
+
+  /**
+   * Attach related records to the ManyToMany pivot table.
+   *
+   * @example
+   * // Attach specializations to doctor
+   * await doctor.attach('specializations', [1, 3, 5]);
+   *
+   * // Attach with pivot data (e.g. certified_at date)
+   * await doctor.attach('specializations', { 1: { certified_at: '2024-01-01' } });
+   */
+  public async attach(
+    relationName: string,
+    idsOrMap: number[] | string[] | Record<string | number, Record<string, any>>,
+    connectionOrAdapter?: string | DatabaseAdapter
+  ): Promise<void> {
+    const rel = (this as any)[relationName]() as Relation;
+    if (rel.type !== 'manyToMany') throw new Error(`attach() only works on manyToMany relations`);
+
+    const Ctor = this.constructor as typeof Model;
+    const localVal = this.get(Ctor.primaryKey);
+    const conn = connectionOrAdapter || Ctor.connection;
+    const table = rel.pivotTable!;
+
+    const rows: Record<string, any>[] = [];
+
+    if (Array.isArray(idsOrMap)) {
+      for (const relatedId of idsOrMap) {
+        rows.push({ [rel.pivotForeignKey!]: localVal, [rel.pivotRelatedKey!]: relatedId });
+      }
+    } else {
+      for (const [relatedId, pivotData] of Object.entries(idsOrMap)) {
+        rows.push({ [rel.pivotForeignKey!]: localVal, [rel.pivotRelatedKey!]: relatedId, ...pivotData });
+      }
+    }
+
+    for (const row of rows) {
+      await Database.table(table, conn).insert(row);
+    }
+  }
+
+  /**
+   * Detach related records from the ManyToMany pivot table.
+   *
+   * @example
+   * await doctor.detach('specializations', [3]); // detach specific
+   * await doctor.detach('specializations');       // detach all
+   */
+  public async detach(
+    relationName: string,
+    ids?: number[] | string[],
+    connectionOrAdapter?: string | DatabaseAdapter
+  ): Promise<void> {
+    const rel = (this as any)[relationName]() as Relation;
+    if (rel.type !== 'manyToMany') throw new Error(`detach() only works on manyToMany relations`);
+
+    const Ctor = this.constructor as typeof Model;
+    const localVal = this.get(Ctor.primaryKey);
+    const conn = connectionOrAdapter || Ctor.connection;
+    let qb = Database.table(rel.pivotTable!, conn).where(rel.pivotForeignKey!, localVal);
+
+    if (ids && ids.length > 0) {
+      qb = qb.whereIn(rel.pivotRelatedKey!, ids);
+    }
+
+    await qb.delete();
+  }
+
+  /**
+   * Sync pivot table — detach all then re-attach.
+   *
+   * @example
+   * // Sync a doctor's specializations (replaces all existing)
+   * await doctor.sync('specializations', [1, 3, 5]);
+   */
+  public async sync(
+    relationName: string,
+    idsOrMap: number[] | string[] | Record<string | number, Record<string, any>>,
+    connectionOrAdapter?: string | DatabaseAdapter
+  ): Promise<void> {
+    await this.detach(relationName, undefined, connectionOrAdapter);
+    await this.attach(relationName, idsOrMap, connectionOrAdapter);
+  }
+
+  // ─── Static Query Builder ───────────────────────────────────────────────────
+
+  /**
+   * Starts a model-level QueryBuilder with full support for:
+   * - Eager loading (.with())
+   * - Soft deletes (.withTrashed(), .onlyTrashed())
+   * - Query scopes (.active(), .byBranch(), etc.)
+   * - Global scopes (auto-applied)
+   */
+  public static query(connectionOrAdapter?: string | DatabaseAdapter): any {
     const table = this.getTable();
-    const qb = Database.table(table, this.connection) as any;
+    const qb = Database.table(table, connectionOrAdapter || this.connection) as any;
     const ModelClass = this;
 
     qb._eagerLoads = [];
@@ -216,19 +597,26 @@ export class Model {
     };
 
     qb.preload = (...relations: string[]) => qb.with(...relations);
+    qb.withTrashed = () => { qb._withTrashed = true; return qb; };
+    qb.onlyTrashed = () => { qb._onlyTrashed = true; return qb; };
 
-    qb.withTrashed = () => {
-      qb._withTrashed = true;
-      return qb;
-    };
+    // ── Query Scope Binding ─────────────────────────────────────────────────
+    // Auto-bind static scope methods: Model.scopeActive() → qb.active()
+    const proto = ModelClass;
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (key.startsWith('scope') && typeof (proto as any)[key] === 'function') {
+        const scopeName = key.charAt(5).toLowerCase() + key.slice(6); // scopeActive → active
+        qb[scopeName] = (...args: any[]) => {
+          (proto as any)[key](qb, ...args);
+          return qb;
+        };
+      }
+    }
 
-    qb.onlyTrashed = () => {
-      qb._onlyTrashed = true;
-      return qb;
-    };
-
-    const originalGet = qb.get.bind(qb);
-    const originalFirst = qb.first.bind(qb);
+    // ── Apply global scopes ─────────────────────────────────────────────────
+    for (const scope of ModelClass.globalScopes) {
+      scope(qb);
+    }
 
     const applySoftDeleteFilter = () => {
       if (ModelClass.softDeletes) {
@@ -240,17 +628,31 @@ export class Model {
       }
     };
 
+    const hydrateRow = (r: any): Model => {
+      const inst = new ModelClass(r);
+      inst._exists = true;
+      inst._original = { ...r };
+      inst._dirty = {};
+      return inst;
+    };
+
+    const originalGet = qb.get.bind(qb);
+    const originalFirst = qb.first.bind(qb);
+
     qb.get = async (): Promise<Model[]> => {
       applySoftDeleteFilter();
-      const rows = await originalGet();
-      const instances = rows.map((r: any) => {
-        const inst = new ModelClass(r);
-        inst._exists = true;
-        inst._original = { ...r };
-        return inst;
-      });
 
-      // Eager Load Relations (solves N+1 query problem)
+      // beforeFetch hook
+      const registry = getHookRegistry(ModelClass);
+      await registry.execute('beforeFetch', qb);
+
+      const rows = await originalGet();
+      const instances = rows.map(hydrateRow);
+
+      // afterFetch hook
+      await registry.execute('afterFetch', instances);
+
+      // Eager Load
       if (qb._eagerLoads.length > 0 && instances.length > 0) {
         for (const relationName of qb._eagerLoads) {
           await ModelClass.eagerLoadRelation(instances, relationName);
@@ -265,15 +667,27 @@ export class Model {
       qb.limitCount = 1;
       const rows = await qb.get();
       qb.limitCount = prevLimit;
-      return rows[0] || null;
+      const inst = rows[0] || null;
+
+      if (inst) {
+        const registry = getHookRegistry(ModelClass);
+        await registry.execute('afterFind', inst);
+      }
+
+      return inst;
+    };
+
+    qb.firstOrFail = async (): Promise<Model> => {
+      const inst = await qb.first();
+      if (!inst) throw new NotFoundError(`${ModelClass.name} not found`);
+      return inst;
     };
 
     return qb;
   }
 
-  /**
-   * Internal Eager Loader to resolve relations in bulk
-   */
+  // ─── Eager Loading ──────────────────────────────────────────────────────────
+
   public static async eagerLoadRelation(instances: Model[], relationName: string): Promise<void> {
     if (instances.length === 0) return;
     const sample = instances[0]!;
@@ -281,15 +695,23 @@ export class Model {
 
     const relation: Relation = sample[relationName]();
 
+    if (relation.type === 'manyToMany') {
+      await this._eagerLoadManyToMany(instances, relationName, relation);
+      return;
+    }
+
+    if (relation.type === 'hasManyThrough') {
+      await this._eagerLoadHasManyThrough(instances, relationName, relation);
+      return;
+    }
+
     if (relation.type === 'belongsTo') {
       const foreignKeys = instances
         .map((i) => i.get(relation.foreignKey))
         .filter((k) => k !== null && k !== undefined);
 
       if (foreignKeys.length === 0) {
-        for (const inst of instances) {
-          inst._relations[relationName] = null;
-        }
+        for (const inst of instances) inst._relations[relationName] = null;
         return;
       }
 
@@ -298,9 +720,9 @@ export class Model {
         .get();
 
       for (const inst of instances) {
-        const foreignVal = inst.get(relation.foreignKey);
+        const fv = inst.get(relation.foreignKey);
         inst._relations[relationName] =
-          relatedRows.find((r) => r.get(relation.localKey) === foreignVal) || null;
+          relatedRows.find((r) => r.get(relation.localKey) === fv) || null;
       }
     } else {
       const parentKeys = instances
@@ -318,20 +740,117 @@ export class Model {
         .whereIn(relation.foreignKey, parentKeys)
         .get();
 
-      // Map related records to parent instances
       for (const inst of instances) {
-        const parentVal = inst.get(relation.localKey);
+        const pv = inst.get(relation.localKey);
         if (relation.type === 'hasMany') {
           inst._relations[relationName] = relatedRows.filter(
-            (r) => r.get(relation.foreignKey) === parentVal
+            (r) => r.get(relation.foreignKey) === pv
           );
         } else {
           inst._relations[relationName] =
-            relatedRows.find((r) => r.get(relation.foreignKey) === parentVal) || null;
+            relatedRows.find((r) => r.get(relation.foreignKey) === pv) || null;
         }
       }
     }
   }
+
+  private static async _eagerLoadManyToMany(
+    instances: Model[],
+    relationName: string,
+    rel: Relation
+  ): Promise<void> {
+    const localKey = rel.localKey;
+    const parentKeys = instances.map((i) => i.get(localKey)).filter((k) => k != null);
+    if (parentKeys.length === 0) {
+      for (const inst of instances) inst._relations[relationName] = [];
+      return;
+    }
+
+    const relatedTable = rel.RelatedModel.getTable();
+    const relatedPK = rel.RelatedModel.primaryKey;
+    const pivotExtra = rel.pivotColumns ?? [];
+
+    const selectCols = [
+      `${relatedTable}.*`,
+      `${rel.pivotTable}.${rel.pivotForeignKey} as __pivot_fk`,
+      ...pivotExtra.map((c: string) => `${rel.pivotTable}.${c} as pivot_${c}`),
+    ];
+
+    const rows = await Database.table(relatedTable)
+      .select(...selectCols)
+      .join(rel.pivotTable!, `${relatedTable}.${relatedPK}`, '=', `${rel.pivotTable}.${rel.pivotRelatedKey}`)
+      .whereIn(`${rel.pivotTable}.${rel.pivotForeignKey}`, parentKeys)
+      .get();
+
+    const map = new Map<any, any[]>();
+    for (const inst of instances) {
+      map.set(inst.get(localKey), []);
+    }
+
+    for (const row of rows as any[]) {
+      const parentKey = row.__pivot_fk;
+      const inst = new rel.RelatedModel(row);
+      inst._exists = true;
+      inst._original = { ...row };
+      delete inst._attributes['__pivot_fk'];
+
+      if (pivotExtra.length > 0) {
+        const pivot: Record<string, any> = {};
+        for (const c of pivotExtra) {
+          pivot[c] = row[`pivot_${c}`];
+          delete inst._attributes[`pivot_${c}`];
+        }
+        inst._relations['$pivot'] = pivot;
+      }
+
+      const list = map.get(parentKey);
+      if (list) list.push(inst);
+    }
+
+    for (const inst of instances) {
+      inst._relations[relationName] = map.get(inst.get(localKey)) ?? [];
+    }
+  }
+
+  private static async _eagerLoadHasManyThrough(
+    instances: Model[],
+    relationName: string,
+    rel: Relation
+  ): Promise<void> {
+    const parentKeys = instances.map((i) => i.get(rel.localKey)).filter((k) => k != null);
+    if (parentKeys.length === 0) {
+      for (const inst of instances) inst._relations[relationName] = [];
+      return;
+    }
+
+    const relatedTable = rel.RelatedModel.getTable();
+    const throughTable = rel.ThroughModel.getTable();
+
+    const rows = await Database.table(relatedTable)
+      .select(`${relatedTable}.*`, `${throughTable}.${rel.throughForeignKey} as __through_fk`)
+      .join(throughTable, `${relatedTable}.${rel.throughLocalKey}`, '=', `${throughTable}.${rel.ThroughModel.primaryKey}`)
+      .whereIn(`${throughTable}.${rel.throughForeignKey}`, parentKeys)
+      .get();
+
+    const map = new Map<any, any[]>();
+    for (const inst of instances) map.set(inst.get(rel.localKey), []);
+
+    for (const row of rows as any[]) {
+      const parentKey = (row as any).__through_fk;
+      const inst = new rel.RelatedModel(row);
+      inst._exists = true;
+      inst._original = { ...row };
+      delete inst._attributes['__through_fk'];
+      const list = map.get(parentKey);
+      if (list) list.push(inst);
+    }
+
+    for (const inst of instances) {
+      inst._relations[relationName] = map.get(inst.get(rel.localKey)) ?? [];
+    }
+  }
+
+  // ─── Static Finders ─────────────────────────────────────────────────────────
 
   public static async find(id: number | string): Promise<Model | null> {
     return this.query().where(this.primaryKey, id).first();
@@ -339,9 +858,7 @@ export class Model {
 
   public static async findOrFail(id: number | string): Promise<Model> {
     const inst = await this.find(id);
-    if (!inst) {
-      throw new NotFoundError(`${this.name} with id ${id} not found`);
-    }
+    if (!inst) throw new NotFoundError(`${this.name} with id ${id} not found`);
     return inst;
   }
 
@@ -353,130 +870,238 @@ export class Model {
     return this.query().get();
   }
 
-  public static async create(attributes: Record<string, any>): Promise<Model> {
+  public static where(column: string, operatorOrValue: unknown, value?: unknown): any {
+    return this.query().where(column, operatorOrValue, value);
+  }
+
+  public static whereIn(column: string, values: unknown[]): any {
+    return this.query().whereIn(column, values);
+  }
+
+  public static whereNotIn(column: string, values: unknown[]): any {
+    return this.query().whereNotIn(column, values);
+  }
+
+  public static whereBetween(column: string, range: [unknown, unknown]): any {
+    return this.query().whereBetween(column, range);
+  }
+
+  public static whereNotBetween(column: string, range: [unknown, unknown]): any {
+    return this.query().whereNotBetween(column, range);
+  }
+
+  public static whereLike(column: string, pattern: string): any {
+    return this.query().whereLike(column, pattern);
+  }
+
+  public static whereNull(column: string): any {
+    return this.query().whereNull(column);
+  }
+
+  public static whereNotNull(column: string): any {
+    return this.query().whereNotNull(column);
+  }
+
+  public static whereRaw(sql: string, bindings: unknown[] = []): any {
+    return this.query().whereRaw(sql, bindings);
+  }
+
+  public static orderBy(column: string, direction: 'asc' | 'desc' | 'ASC' | 'DESC' = 'ASC'): any {
+    return this.query().orderBy(column, direction);
+  }
+
+  public static limit(count: number): any {
+    return this.query().limit(count);
+  }
+
+  public static async paginate(page = 1, perPage = 15): Promise<any> {
+    return this.query().paginate(page, perPage);
+  }
+
+  public static with(...relations: string[]): any {
+    return this.query().with(...relations);
+  }
+
+  public static preload(...relations: string[]): any {
+    return this.query().preload(...relations);
+  }
+
+  public static async count(column = '*'): Promise<number> {
+    return this.query().count(column);
+  }
+
+  public static async sum(column: string): Promise<number> {
+    return this.query().sum(column);
+  }
+
+  public static async avg(column: string): Promise<number> {
+    return this.query().avg(column);
+  }
+
+  public static async create(
+    attributes: Record<string, any>,
+    connectionOrAdapter?: string | DatabaseAdapter
+  ): Promise<Model> {
     const instance = new this(attributes);
-    await instance.save();
+    await instance.save(connectionOrAdapter);
     return instance;
   }
 
   public static async firstOrCreate(
     search: Record<string, any>,
-    attributes: Record<string, any> = {}
+    attributes: Record<string, any> = {},
+    connectionOrAdapter?: string | DatabaseAdapter
   ): Promise<Model> {
-    let q = this.query();
+    let q = this.query(connectionOrAdapter);
     for (const [k, v] of Object.entries(search)) {
       q = q.where(k, v);
     }
     const found = await q.first();
     if (found) return found;
-
-    return this.create({ ...search, ...attributes });
+    return this.create({ ...search, ...attributes }, connectionOrAdapter);
   }
 
   /**
-   * Save the current model instance (Insert or Update)
+   * Update or create a record.
+   *
+   * @example
+   * await Patient.updateOrCreate(
+   *   { mrn: 'AKMMCH-2024-0001' },
+   *   { name: 'Rahim', phone: '01700000000' }
+   * );
    */
-  public async save(): Promise<this> {
+  public static async updateOrCreate(
+    search: Record<string, any>,
+    attributes: Record<string, any>,
+    connectionOrAdapter?: string | DatabaseAdapter
+  ): Promise<Model> {
+    let q = this.query(connectionOrAdapter);
+    for (const [k, v] of Object.entries(search)) q = q.where(k, v);
+    const found = await q.first() as Model | null;
+
+    if (found) {
+      found.fill(attributes);
+      await found.save(connectionOrAdapter);
+      return found;
+    }
+    return this.create({ ...search, ...attributes }, connectionOrAdapter);
+  }
+
+  // ─── Save / Delete ──────────────────────────────────────────────────────────
+
+  public async save(connectionOrAdapter?: string | DatabaseAdapter): Promise<this> {
     const Ctor = this.constructor as typeof Model;
     const pk = Ctor.primaryKey;
     const table = Ctor.getTable();
+    const conn = connectionOrAdapter || Ctor.connection;
+    const registry = getHookRegistry(Ctor);
 
-    await this.beforeSave();
+    await registry.execute('beforeSave', this);
+
+    const formatSqlDate = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     if (!this._exists) {
-      await this.beforeCreate();
-      if (!this._attributes['created_at']) {
-        this._attributes['created_at'] = new Date().toISOString();
-      }
-      if (!this._attributes['updated_at']) {
-        this._attributes['updated_at'] = new Date().toISOString();
-      }
+      await registry.execute('beforeCreate', this);
 
-      const res = await Database.table(table, Ctor.connection).insert(this._attributes);
-      if (res.insertId && !this._attributes[pk]) {
-        this._attributes[pk] = res.insertId;
-      }
+      const createdCol = typeof Ctor.timestamps === 'object'
+        ? (Ctor.timestamps.createdAt || null)
+        : (Ctor.timestamps ? 'created_at' : null);
+      const updatedCol = typeof Ctor.timestamps === 'object'
+        ? (Ctor.timestamps.updatedAt || null)
+        : (Ctor.timestamps ? 'updated_at' : null);
+
+      if (createdCol && !this._attributes[createdCol]) this._attributes[createdCol] = formatSqlDate();
+      if (updatedCol && !this._attributes[updatedCol]) this._attributes[updatedCol] = formatSqlDate();
+
+      const res = await Database.table(table, conn).insert(this._attributes);
+      if (res.insertId && !this._attributes[pk]) this._attributes[pk] = res.insertId;
       this._exists = true;
       this._original = { ...this._attributes };
-      await this.afterCreate();
+      this._dirty = {};
+
+      await registry.execute('afterCreate', this);
     } else {
-      this._attributes['updated_at'] = new Date().toISOString();
+      await registry.execute('beforeUpdate', this);
+
+      const updatedCol = typeof Ctor.timestamps === 'object'
+        ? (Ctor.timestamps.updatedAt || null)
+        : (Ctor.timestamps ? 'updated_at' : null);
+      if (updatedCol) this._attributes[updatedCol] = formatSqlDate();
+
       const id = this._attributes[pk];
-      await Database.table(table, Ctor.connection).where(pk, id).update(this._attributes);
+      await Database.table(table, conn).where(pk, id).update(this._attributes);
       this._original = { ...this._attributes };
+      this._dirty = {};
+
+      await registry.execute('afterUpdate', this);
     }
 
-    await this.afterSave();
+    await registry.execute('afterSave', this);
     return this;
   }
 
-  /**
-   * Delete the model instance (Soft Delete or Hard Delete)
-   */
-  public async delete(): Promise<boolean> {
+  public async delete(connectionOrAdapter?: string | DatabaseAdapter): Promise<boolean> {
     if (!this._exists) return false;
     const Ctor = this.constructor as typeof Model;
     const pk = Ctor.primaryKey;
     const id = this._attributes[pk];
+    const conn = connectionOrAdapter || Ctor.connection;
+    const registry = getHookRegistry(Ctor);
 
-    await this.beforeDelete();
+    await registry.execute('beforeDelete', this);
 
     if (Ctor.softDeletes) {
-      const now = new Date().toISOString();
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
       this.set('deleted_at', now);
-      await Database.table(Ctor.getTable(), Ctor.connection).where(pk, id).update({ deleted_at: now });
+      await Database.table(Ctor.getTable(), conn).where(pk, id).update({ deleted_at: now });
     } else {
-      await Database.table(Ctor.getTable(), Ctor.connection).where(pk, id).delete();
+      await Database.table(Ctor.getTable(), conn).where(pk, id).delete();
       this._exists = false;
     }
 
-    await this.afterDelete();
+    await registry.execute('afterDelete', this);
     return true;
   }
 
-  /**
-   * Restore a soft-deleted model instance
-   */
-  public async restore(): Promise<boolean> {
+  public async restore(connectionOrAdapter?: string | DatabaseAdapter): Promise<boolean> {
     const Ctor = this.constructor as typeof Model;
     if (!Ctor.softDeletes || !this._exists) return false;
-
     const pk = Ctor.primaryKey;
     const id = this._attributes[pk];
+    const conn = connectionOrAdapter || Ctor.connection;
     this.set('deleted_at', null);
-    await Database.table(Ctor.getTable(), Ctor.connection).where(pk, id).update({ deleted_at: null });
+    await Database.table(Ctor.getTable(), conn).where(pk, id).update({ deleted_at: null });
     return true;
   }
 
-  /**
-   * Permanently delete a model instance from the database
-   */
-  public async forceDelete(): Promise<boolean> {
+  public async forceDelete(connectionOrAdapter?: string | DatabaseAdapter): Promise<boolean> {
     if (!this._exists) return false;
     const Ctor = this.constructor as typeof Model;
     const pk = Ctor.primaryKey;
     const id = this._attributes[pk];
-
-    await Database.table(Ctor.getTable(), Ctor.connection).where(pk, id).delete();
+    const conn = connectionOrAdapter || Ctor.connection;
+    await Database.table(Ctor.getTable(), conn).where(pk, id).delete();
     this._exists = false;
     return true;
   }
 
+  // ─── Serialization ──────────────────────────────────────────────────────────
+
   /**
-   * Convert model instance to JSON object, stripping hidden attributes
+   * Converts the model to a plain JSON object.
+   * Hidden attributes are excluded. Relations and computed properties are included.
    */
   public toJSON(): Record<string, any> {
     const Ctor = this.constructor as typeof Model;
     const json: Record<string, any> = {};
 
     for (const [key, val] of Object.entries(this._attributes)) {
-      if (!Ctor.hidden.includes(key)) {
-        json[key] = val;
-      }
+      if (!Ctor.hidden.includes(key)) json[key] = val;
     }
 
-    // Attach loaded relations
+    // Include eager-loaded relations
     for (const [rel, val] of Object.entries(this._relations)) {
+      if (rel === '$pivot') continue; // handled separately
       if (Array.isArray(val)) {
         json[rel] = val.map((item) => (item?.toJSON ? item.toJSON() : item));
       } else if (val?.toJSON) {
@@ -486,15 +1111,35 @@ export class Model {
       }
     }
 
+    // Include computed properties (registered via @computed decorator)
+    const computedProps: string[] = (Object.getPrototypeOf(this) as any)._computedProperties ?? [];
+    for (const prop of computedProps) {
+      try {
+        const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(this), prop);
+        if (descriptor?.get) {
+          json[prop] = descriptor.get.call(this);
+        }
+      } catch {
+        // Computed property threw — skip silently
+      }
+    }
+
     return json;
   }
 
-  // Lifecycle hook extension points
+  // ─── Instance Lifecycle Hooks (override-style, kept for backward compat) ────
+
+  /** @deprecated Use @beforeSave() decorator or registerHook() instead */
   public async beforeCreate(): Promise<void> {}
+  /** @deprecated Use @afterCreate() decorator or registerHook() instead */
   public async afterCreate(): Promise<void> {}
+  /** @deprecated Use @beforeSave() decorator or registerHook() instead */
   public async beforeSave(): Promise<void> {}
+  /** @deprecated Use @afterSave() decorator or registerHook() instead */
   public async afterSave(): Promise<void> {}
+  /** @deprecated Use @beforeDelete() decorator or registerHook() instead */
   public async beforeDelete(): Promise<void> {}
+  /** @deprecated Use @afterDelete() decorator or registerHook() instead */
   public async afterDelete(): Promise<void> {}
 }
 

@@ -5,7 +5,7 @@
   ### The Blazing-Fast, Zero-Dependency Full-Stack Web Framework for Node.js
 
   [![CI](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml/badge.svg)](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml)
-  [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aero)
+  [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aerojs)
   [![Coverage: 88%+](https://img.shields.io/badge/coverage-88%25-brightgreen.svg)](package.json)
   [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
   [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
@@ -147,7 +147,7 @@ Aero is engineered from first principles to combine the best architectural conce
 ## 📦 Installation
 
 ```bash
-npm install aero
+npm install aerojs
 ```
 
 Requirements:
@@ -159,9 +159,9 @@ Requirements:
 ## ⚡ Quick Start
 
 ```typescript
-import { Aero } from 'aero';
+import { AeroJS } from 'aerojs';
 
-const app = new Aero();
+const app = new AeroJS();
 
 // Global onion middleware
 app.use(async (ctx, next) => {
@@ -173,7 +173,7 @@ app.use(async (ctx, next) => {
 
 // Basic route
 app.get('/', (ctx) => {
-  ctx.json({ framework: 'Aero', status: 'online' });
+  ctx.json({ framework: 'AeroJS', status: 'online' });
 });
 
 // Parameterized route

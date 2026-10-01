@@ -83,4 +83,45 @@ export class Env {
   }
 }
 
+import { existsSync, readFileSync } from 'node:fs';
+
 export const env = new Env();
+
+/**
+ * Loads .env file into process.env with zero external dependencies.
+ */
+export function loadEnv(filePath = '.env'): void {
+  if (typeof (process as any).loadEnvFile === 'function' && existsSync(filePath)) {
+    try {
+      (process as any).loadEnvFile(filePath);
+      return;
+    } catch {
+      // Fallback to manual line parser
+    }
+  }
+
+  try {
+    if (existsSync(filePath)) {
+      const content = readFileSync(filePath, 'utf-8');
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore environment file loading errors
+  }
+}
+
+
