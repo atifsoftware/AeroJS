@@ -125,6 +125,10 @@ export {
   type Migration,
   type ModelHookEvent,
   type ModelHookHandler,
+  Seeder,
+  DatabaseSeeder,
+  ModelFactory,
+  type FactoryDefinition,
 } from './database/index.js';
 export {
   Logger,

@@ -61,6 +61,15 @@ export class KnexDatabaseAdapter implements DatabaseAdapter {
     return new KnexDatabaseAdapter(trx);
   }
 
+
+  public async savepoint(name: string): Promise<void> {
+    await this.execute(`SAVEPOINT ${name}`);
+  }
+
+  public async rollbackTo(name: string): Promise<void> {
+    await this.execute(`ROLLBACK TO SAVEPOINT ${name}`);
+  }
+
   public async commit(): Promise<void> {
     if (typeof this.knex.commit === 'function') {
       await this.knex.commit();

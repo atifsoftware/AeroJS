@@ -4,7 +4,7 @@
  */
 
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import path, { join, dirname } from 'node:path';
 
 export function makeController(name: string, targetDir = 'app/controllers'): string {
   const cleanName = name.replace(/Controller$/i, '');
@@ -128,6 +128,31 @@ export default migration;
 `;
 
   writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+export function makeSeeder(name: string, targetDir = 'database/seeders'): string {
+  const className = name.endsWith('Seeder') ? name : `${name}Seeder`;
+  const cleanName = className.replace('Seeder', '');
+  const fileName = `${className}.ts`;
+  const dirPath = path.resolve(process.cwd(), targetDir);
+  const filePath = path.join(dirPath, fileName);
+
+  if (!existsSync(dirPath)) mkdirSync(dirPath, { recursive: true });
+
+  const template = `import { Seeder } from 'aerojs';
+
+export class ${className} extends Seeder {
+  public async run(): Promise<void> {
+    // Write your database queries or Model Factory creations here
+    // Example: await UserFactory.createMany(10);
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, template, 'utf8');
   return filePath;
 }
 

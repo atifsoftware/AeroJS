@@ -3,7 +3,10 @@
  * @description Main command line dispatcher and router for AeroJS CLI.
  */
 
-import { makeController, makeModel, makeMigration, makeMiddleware } from './commands/make.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder } from './commands/make.js';
 import { initProject } from './commands/init.js';
 import { Migrator } from '../database/migrator.js';
 
@@ -62,6 +65,46 @@ export class AeroCLI {
           if (res.migrationPath) {
             console.log(`[CREATED] Migration: ${res.migrationPath}`);
           }
+          return 0;
+        }
+
+        case 'make:seeder': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a seeder name. Example: aero make:seeder UserSeeder');
+            return 1;
+          }
+          const seederPath = makeSeeder(name);
+          console.log(`[CREATED] Seeder: ${seederPath}`);
+          return 0;
+        }
+
+        case 'db:seed': {
+          console.log('Running database seeders...');
+          const seederPath = path.resolve(process.cwd(), 'database/seeders/DatabaseSeeder.ts');
+          const seederJsPath = path.resolve(process.cwd(), 'database/seeders/DatabaseSeeder.js');
+
+          let importPath = '';
+          if (fs.existsSync(seederPath)) {
+             importPath = pathToFileURL(seederPath).href;
+          } else if (fs.existsSync(seederJsPath)) {
+             importPath = pathToFileURL(seederJsPath).href;
+          } else {
+             console.log('No DatabaseSeeder found at database/seeders/DatabaseSeeder.ts. Skipping.');
+             return 0;
+          }
+
+          const module = await import(importPath);
+          const SeederClass = module.default || module.DatabaseSeeder;
+
+          if (!SeederClass) {
+             console.error('Error: DatabaseSeeder did not export a default class.');
+             return 1;
+          }
+
+          const seeder = new SeederClass();
+          await seeder.run();
+          console.log('Database seeding completed successfully.');
           return 0;
         }
 
@@ -143,10 +186,12 @@ Available Commands:
   make:model <name> [-m]     Create a new Active Record Model (optionally with migration)
   make:migration <name>      Create a new timestamped schema migration file
   make:middleware <name>     Create a new request middleware
+  make:seeder <name>         Create a new database seeder
 
   migrate                    Run all pending database migrations
   migrate:rollback           Rollback the last migration batch
   migrate:status             Show the execution status of all migrations
+  db:seed                    Execute the DatabaseSeeder
 `);
   }
 }
