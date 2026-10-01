@@ -258,6 +258,23 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     this.res.redirect(url, status);
   }
 
+
+  public async can(module: string, action: string, resource?: any): Promise<boolean> {
+    if (!this.container || !this.container.has('policyEngine')) {
+      throw new Error('PolicyEngine not configured. Call app.usePolicyEngine() first.');
+    }
+    const engine = this.container.resolve<any>('policyEngine');
+    const user = (this.state as any).user || (this.req as any).user;
+    return await engine.check(user, module, action, resource);
+  }
+
+  public async authorize(module: string, action: string, resource?: any): Promise<void> {
+    const isAllowed = await this.can(module, action, resource);
+    if (!isAllowed) {
+      throw new ForbiddenError(`Unauthorized to perform '${action}' on '${module}'.`);
+    }
+  }
+
   public throw(status: number, message?: string, details?: unknown): never {
     switch (status) {
       case 400:

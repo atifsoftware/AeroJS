@@ -5,6 +5,10 @@
  * rate limiting, and security headers.
  */
 
+import { ModuleRegistry } from '../di/decorators.js';
+import 'reflect-metadata';
+import { policyPlugin, type PolicyEngine } from '../auth/policy.js';
+import { tenancyPlugin, type TenancyOptions } from '../tenancy/tenant.js';
 import { ApplicationCore, type HookMap, type HookName } from './application-core.js';
 import type { DefaultState } from './context.js';
 import { serveStatic, type StaticOptions } from '../static/static.js';
@@ -24,6 +28,30 @@ export { ApplicationCore, type HookMap, type HookName } from './application-core
  * fullstack monolith, SPA, and security extensions on top.
  */
 export class Aero<State = DefaultState> extends ApplicationCore<State> {
+  /**
+   * Enables automatic Multi-Tenancy Data Scoping.
+   */
+  public useTenancy(options: TenancyOptions): this {
+    return this.register(tenancyPlugin(options)) as this;
+  }
+
+  /**
+   * Enables the Typed Permission Policy Engine.
+   */
+  public usePolicyEngine(engine: PolicyEngine): this {
+    return this.register(policyPlugin(engine)) as this;
+  }
+
+  /**
+   * Registers a group of Modules containing controllers and injectable service providers.
+   */
+  public useModules(modules: any[]): this {
+    for (const mod of modules) {
+      ModuleRegistry.registerModule(mod, this.container);
+    }
+    return this;
+  }
+
   /**
    * Enables Zero-Dependency GraphQL execution and interactive Playground.
    */

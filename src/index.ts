@@ -396,3 +396,7 @@ export * from './ws/index.js';
 export * from './diagnostics/index.js';
 export * from './security/index.js';
 export * from './graphql/index.js';
+
+export * from './di/decorators.js';
+export * from './auth/index.js';
+export * from './tenancy/index.js';
