@@ -389,3 +389,5 @@ export {
 } from './scheduler/scheduler.js';
 
 export * from './cache/index.js';
+
+export * from './redis/index.js';

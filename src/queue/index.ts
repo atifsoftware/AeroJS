@@ -9,3 +9,5 @@ export * from './drivers/memory-queue-driver.js';
 export * from './drivers/database-queue-driver.js';
 export * from './worker.js';
 export * from './queue-manager.js';
+
+export * from './drivers/redis-queue-driver.js';

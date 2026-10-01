@@ -1,3 +1,4 @@
+import { RedisClient } from '../redis/redis-client.js';
 /**
  * @file session-driver.ts
  * @description Session Driver interface and base implementations for AeroJS.
@@ -110,11 +111,15 @@ export class FileSessionDriver implements SessionDriver {
  * Redis session driver — recommended for production hospital deployments.
  * Requires ioredis: npm install ioredis
  */
+
+/**
+ * Native Redis session driver using AeroJS zero-dependency Redis client.
+ */
 export class RedisSessionDriver implements SessionDriver {
-  private client: any; // ioredis instance
+  private client: RedisClient;
   private prefix: string;
 
-  constructor(redisClient: any, prefix = 'sess:') {
+  constructor(redisClient: RedisClient, prefix = 'sess:') {
     this.client = redisClient;
     this.prefix = prefix;
   }
