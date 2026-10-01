@@ -391,3 +391,6 @@ export {
 // Universal Multi-Store Cache System
 export * from './cache/index.js';
 
+// Native Zero-Dependency Redis Client
+export * from './redis/index.js';
+
