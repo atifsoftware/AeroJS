@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder } from './commands/make.js';
 import { initProject } from './commands/init.js';
+import { encryptEnv, decryptEnv } from './commands/vault.js';
 import { Migrator } from '../database/migrator.js';
 
 export class AeroCLI {
@@ -130,6 +131,16 @@ export class AeroCLI {
           return 0;
         }
 
+                case 'env:encrypt': {
+          encryptEnv();
+          return 0;
+        }
+
+        case 'env:decrypt': {
+          decryptEnv();
+          return 0;
+        }
+
         case 'migrate': {
           const migrator = new Migrator();
           const executed = await migrator.getExecutedMigrations();
@@ -187,6 +198,9 @@ Available Commands:
   make:migration <name>      Create a new timestamped schema migration file
   make:middleware <name>     Create a new request middleware
   make:seeder <name>         Create a new database seeder
+
+  env:encrypt                Encrypt .env file into a secure .env.vault
+  env:decrypt                Decrypt .env.vault to verify contents using AERO_KEY
 
   migrate                    Run all pending database migrations
   migrate:rollback           Rollback the last migration batch

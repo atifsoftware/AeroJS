@@ -4,6 +4,7 @@
  */
 
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders, OutgoingHttpHeader } from 'node:http';
+import * as crypto from 'node:crypto';
 import { AeroRequest } from './request.js';
 import { AeroResponse } from './response.js';
 import type { CookieOptions, ParsedQuery, RouteParams } from './types.js';
@@ -170,6 +171,53 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
 
   public setCookie(name: string, value: string, options?: CookieOptions): this {
     return this.cookie(name, value, options);
+  }
+
+    public setEncryptedCookie(name: string, value: string, options?: CookieOptions): this {
+    const keyHex = process.env['AERO_KEY'];
+    if (!keyHex || keyHex.length !== 64) {
+      throw new Error('AERO_KEY must be exactly 64 hex characters (32 bytes) to use encrypted cookies.');
+    }
+
+    const key = Buffer.from(keyHex, 'hex');
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
+    let encrypted = cipher.update(value, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+
+    const payload = `${iv.toString('hex')}:${authTag}:${encrypted}`;
+
+    return this.setCookie(name, payload, options);
+  }
+
+  public getEncryptedCookie(name: string): string | undefined {
+    const payload = this.cookies[name];
+    if (!payload) return undefined;
+
+    const keyHex = process.env['AERO_KEY'];
+    if (!keyHex || keyHex.length !== 64) return undefined;
+
+    try {
+      const parts = payload.split(':');
+      if (parts.length !== 3) return undefined;
+
+      const [ivHex, authTagHex, encryptedHex] = parts;
+      const key = Buffer.from(keyHex, 'hex');
+      const iv = Buffer.from(ivHex as string, 'hex');
+      const authTag = Buffer.from(authTagHex as string, 'hex');
+
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(authTag);
+
+      let decrypted: string = decipher.update(encryptedHex as string, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+
+      return decrypted;
+    } catch {
+      return undefined; // Tampered or invalid cookie
+    }
   }
 
   public clearCookie(name: string, options?: CookieOptions): this {

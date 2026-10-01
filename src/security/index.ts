@@ -53,3 +53,6 @@ export {
   cors,
   type CorsOptions,
 } from '../middleware/cors.js';
+
+export * from './totp.js';
+export * from './vault.js';

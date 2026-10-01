@@ -400,3 +400,6 @@ export * from './ws/index.js';
 // Enterprise Health Checks & Prometheus Metrics
 export * from './diagnostics/index.js';
 
+// Advanced Security Suite (TOTP, Vault, Encrypted Cookies)
+export * from './security/index.js';
+

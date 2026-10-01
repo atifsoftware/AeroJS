@@ -1,3 +1,6 @@
+
+import { createRequire } from 'node:module';
+const requireVaultHack = () => createRequire(import.meta.url)('../security/vault.js');
 /**
  * @file env.ts
  * @description Environment variable loader and validator with type coercion and required checks.
@@ -91,6 +94,39 @@ export const env = new Env();
  * Loads .env file into process.env with zero external dependencies.
  */
 export function loadEnv(filePath = '.env'): void {
+  const vaultPath = filePath + '.vault';
+  const key = process.env['AERO_KEY'] || process.env['DOTENV_PRIVATE_KEY'];
+
+  if (key && existsSync(vaultPath)) {
+    try {
+      // Lazy load vault to avoid circular dependencies if any
+      const vaultContent = readFileSync(vaultPath, 'utf8');
+      const match = vaultContent.match(/AERO_VAULT="([^"]+)"/);
+      if (match && match[1]) {
+        const { EnvVault } = requireVaultHack();
+        const decrypted = EnvVault.decrypt(match[1], key);
+        for (const line of decrypted.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx > 0) {
+            const keyName = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (process.env[keyName] === undefined) {
+              process.env[keyName] = val;
+            }
+          }
+        }
+        return; // Vault loaded successfully, skip regular .env
+      }
+    } catch (e) {
+      console.error('Failed to decrypt .env.vault:', e);
+    }
+  }
+
   if (typeof (process as any).loadEnvFile === 'function' && existsSync(filePath)) {
     try {
       (process as any).loadEnvFile(filePath);
