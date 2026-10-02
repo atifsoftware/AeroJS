@@ -169,6 +169,9 @@ export class SessionManager {
     if (!this._dirty && !this._loaded) return;
     await this.ensureLoaded();
     await this.driver.write(this.sessionId, this.data, this.config.lifetime);
+    if ((this.driver as any).isClientSide && typeof (this.driver as any).getEncryptedCookieValue === 'function') {
+      this.sessionId = (this.driver as any).getEncryptedCookieValue(this.data);
+    }
     this.writeSessionCookie();
     this._dirty = false;
   }
@@ -216,9 +219,13 @@ export function sessionPlugin(config: SessionConfig = {}): Middleware {
   return async (ctx, next) => {
     // Extract existing session ID from cookie, or create a new one
     const existingId = ctx.cookies[resolvedConfig.cookieName];
-    const sessionId = existingId && existingId.length === 64
+    const isClientSide = !!(resolvedConfig.driver as any).isClientSide;
+    const isValidId = existingId && (
+      isClientSide ? existingId.startsWith('aero:enc:') : existingId.length === 64
+    );
+    const sessionId = isValidId
       ? existingId
-      : crypto.randomBytes(32).toString('hex');
+      : (isClientSide ? '' : crypto.randomBytes(32).toString('hex'));
 
     const session = new SessionManager(ctx, sessionId, resolvedConfig);
     (ctx as any).session = session;

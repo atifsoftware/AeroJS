@@ -1439,6 +1439,146 @@ if (!ctx.hasValidSignature()) {
 
 ---
 
+### 38. Field-Level Database Encryption (`@encrypted()` & `Crypt`)
+
+Ensure HIPAA, GDPR, and PCI-DSS compliance by transparently encrypting sensitive database columns at rest using authenticated **AES-256-GCM** encryption:
+
+```typescript
+import { Model, encrypted, Crypt } from '@shohaghinfo/aerojs';
+
+class PatientRecord extends Model {
+  public static override table = 'patients';
+  public static override fillable = ['name', 'ssn', 'medical_history'];
+  public static override encrypted = ['ssn', 'medical_history'];
+
+  @encrypted()
+  public ssn!: string;
+}
+
+// 1. Create - Data is stored as aero:enc:<iv>:<tag>:<ciphertext> in the database
+const patient = await PatientRecord.create({
+  name: 'Rahim Khan',
+  ssn: '019-99-8888',
+  medical_history: 'Diabetes Type 2, Hypertension',
+});
+
+// 2. Read - Transparently decrypted on fetch
+const loaded = await PatientRecord.find(patient.id);
+console.log(loaded.ssn); // '019-99-8888' (Plaintext in app code)
+
+// 3. Arbitrary payload encryption via Crypt facade:
+const cipher = Crypt.encrypt({ account: '123456', balance: 5000 });
+const data = Crypt.decrypt(cipher);
+```
+
+---
+
+### 39. Database Read Replicas & Master-Slave Routing
+
+Route all high-volume read traffic to replica pools with round-robin load distribution while ensuring writes and transactions hit the primary master:
+
+```typescript
+import { Database, DB } from '@shohaghinfo/aerojs';
+
+// Configure replication pool
+Database.configureReplication({
+  write: 'primary_master',
+  read: ['replica_east_1', 'replica_east_2', 'replica_west_1'],
+});
+
+// 1. Automatically queries a read replica (round-robin balanced)
+const users = await DB.table('users').where('active', true).get();
+
+// 2. Force reading from the master node for read-your-own-writes consistency
+const freshUser = await DB.table('users').useWriteConnection().where('id', 1).first();
+
+// 3. Direct write queries always execute on the primary write database
+await DB.table('users').where('id', 1).update({ status: 'verified' });
+```
+
+---
+
+### 40. Interactive Queue Horizon Dashboard (`app.useQueueDashboard`)
+
+A built-in, dark-mode developer control panel for real-time background task monitoring and failure recovery:
+
+```typescript
+import { Aero } from '@shohaghinfo/aerojs';
+
+const app = new Aero();
+
+// Mount the dashboard with optional role-based protection
+app.useQueueDashboard('/__aero/queue', {
+  title: 'My Hospital Queue Horizon',
+  pollInterval: 3, // auto-refresh every 3s
+  auth: (ctx) => ctx.session?.get('user')?.role === 'superadmin',
+});
+```
+
+- **Live GUI (`GET /__aero/queue`)**: Glassmorphic dark UI with live throughput KPI cards, queues status, and dead letter queue inspector.
+- **REST APIs**:
+  - `GET /__aero/queue/api/metrics` — JSON statistics
+  - `GET /__aero/queue/api/failed` — List dead-letter failed jobs with full stack traces
+  - `POST /__aero/queue/api/retry/:id` — Retry single failed task
+  - `DELETE /__aero/queue/api/failed/:id` — Delete failed task
+  - `POST /__aero/queue/api/retry-all` — Batch retry all failed jobs
+  - `DELETE /__aero/queue/api/purge-all` — Purge dead letter queue
+
+---
+
+### 41. Encrypted Stateless Cookie Session Driver (`CookieSessionDriver`)
+
+Store session state entirely on the client within an encrypted, authenticated, and tamper-proof HTTP-only cookie using AES-256-GCM. Ideal for serverless, Edge, and horizontal autoscaling:
+
+```typescript
+import { Aero, sessionPlugin, CookieSessionDriver } from '@shohaghinfo/aerojs';
+
+const app = new Aero();
+
+app.use(sessionPlugin({
+  driver: new CookieSessionDriver(),
+  cookieName: 'aero_session',
+  lifetime: 8 * 3600, // 8-hour shift
+  cookie: { httpOnly: true, secure: true, sameSite: 'lax' },
+}));
+
+app.post('/login', async (ctx) => {
+  await ctx.session.put('user', { id: 1, role: 'physician' });
+  ctx.json({ loggedIn: true });
+});
+```
+
+---
+
+### 42. Client Request Fingerprinting & Anti-Hijacking Guard
+
+Prevent stolen session cookies and session fixation attacks by fingerprinting client browser characteristics (User-Agent, client IP, accept headers):
+
+```typescript
+import { Aero, sessionPlugin, fingerprintGuard, RequestFingerprint } from '@shohaghinfo/aerojs';
+
+const app = new Aero();
+app.use(sessionPlugin());
+
+// Automatically binds and verifies client fingerprint on every session request
+app.use(fingerprintGuard({
+  ip: true,
+  userAgent: true,
+  acceptLanguage: true,
+  onMismatch: (ctx) => {
+    ctx.status(401).json({ error: 'Session hijacked from an unauthorized device' });
+  },
+}));
+
+// Or generate manually for audit logs:
+app.get('/audit', (ctx) => {
+  const fp = RequestFingerprint.generate(ctx);
+  ctx.json({ fingerprint: fp });
+});
+```
+
+---
+
 ## 📊 Comparison Matrix
 
 | Feature | Express | Koa | Fastify | AdonisJS | **AeroJS** |

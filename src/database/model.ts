@@ -23,6 +23,7 @@ import { Database, type DatabaseRow, type DatabaseAdapter } from './connection.j
 import { QueryBuilder } from './query-builder.js';
 import { NotFoundError } from '../core/errors.js';
 import { getHookRegistry } from './model-hooks.js';
+import { Crypt } from '../security/encryption.js';
 
 // ─── Relation Types ───────────────────────────────────────────────────────────
 
@@ -238,6 +239,44 @@ export function computed(): PropertyDecorator {
   };
 }
 
+/**
+ * Property decorator to mark a model attribute for transparent AES-256-GCM encryption in the database.
+ * The attribute is stored encrypted in the database, but read and manipulated as plaintext in application code.
+ *
+ * @example
+ * class Patient extends Model {
+ *   @encrypted()
+ *   public ssn!: string;
+ * }
+ */
+export function encrypted(): PropertyDecorator {
+  return function (target: any, propertyKey: string | symbol) {
+    const ctor = typeof target === 'function' ? target : target.constructor;
+    if (!ctor.encrypted) {
+      ctor.encrypted = [];
+    }
+    const propName = String(propertyKey);
+    if (!ctor.encrypted.includes(propName)) {
+      ctor.encrypted.push(propName);
+    }
+
+    Object.defineProperty(target, propertyKey, {
+      get(this: Model) {
+        return this.get(propName);
+      },
+      set(this: Model, val: any) {
+        if (val === undefined && this.get(propName) !== null && this.get(propName) !== undefined) {
+          // Avoid wiping out attributes initialized by constructor or hydration
+          return;
+        }
+        this.set(propName, val);
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  };
+}
+
 // ─── Model Base Class ─────────────────────────────────────────────────────────
 
 export class Model {
@@ -245,12 +284,37 @@ export class Model {
   public static table = '';
   public static primaryKey = 'id';
   public static hidden: string[] = [];
-    public static fillable: string[] = [];
+  public static fillable: string[] = [];
+  public static encrypted: string[] = [];
   public static tenanted = false;
   public static tenantColumn = 'tenant_id';
   public static softDeletes = false;
   public static timestamps: boolean | { createdAt?: string; updatedAt?: string } = true;
   public static connection = 'default';
+
+  /**
+   * Hydrates a database row into a Model instance, transparently decrypting any @encrypted fields.
+   */
+  public static hydrate<M extends Model = Model>(this: new (...args: any[]) => M, row: any): M {
+    const Ctor = this as any;
+    const decryptedRow = { ...row };
+    if (Ctor.encrypted && Array.isArray(Ctor.encrypted) && Ctor.encrypted.length > 0) {
+      for (const col of Ctor.encrypted) {
+        if (decryptedRow[col] && Crypt.isEncrypted(decryptedRow[col])) {
+          try {
+            decryptedRow[col] = Crypt.decrypt(decryptedRow[col]);
+          } catch {
+            // Decryption fallback
+          }
+        }
+      }
+    }
+    const inst = new (this as any)(decryptedRow);
+    inst._exists = true;
+    inst._original = { ...decryptedRow };
+    inst._dirty = {};
+    return inst;
+  }
 
   /**
    * Global query scopes automatically applied to every query.
@@ -283,24 +347,36 @@ export class Model {
       get(target: any, prop: string | symbol, receiver: any) {
         if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
         if (target._relations && prop in target._relations) return target._relations[prop];
+
+        // 1. If it's a model attribute, always return from _attributes
+        if (target._attributes && String(prop) in target._attributes) {
+          return target.get(String(prop));
+        }
+
+        // 2. Computed properties or custom prototype getters
+        const protoDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), prop);
+        if (protoDesc && protoDesc.get) {
+          return protoDesc.get.call(receiver);
+        }
+
+        // 3. Methods or other properties
         if (prop in target) {
           const val = Reflect.get(target, prop, receiver);
           if (typeof val === 'function' && prop !== 'constructor') return val.bind(target);
           return val;
         }
+
         return target.get(String(prop));
       },
       set(target: any, prop: string | symbol, value: any, receiver: any) {
         if (typeof prop === 'symbol') return Reflect.set(target, prop, value, receiver);
-        if (
-          prop in target &&
-          !['_attributes', '_original', '_dirty', '_relations', '_exists'].includes(String(prop))
-        ) {
-          const desc =
-            Object.getOwnPropertyDescriptor(target, prop) ||
-            Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), prop);
-          if (desc && (desc.get || desc.set)) return Reflect.set(target, prop, value, receiver);
+
+        const protoDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), prop);
+        if (protoDesc && protoDesc.set && !(target._attributes && String(prop) in target._attributes)) {
+          protoDesc.set.call(receiver, value);
+          return true;
         }
+
         target.set(String(prop), value);
         return true;
       },
@@ -641,11 +717,7 @@ export class Model {
     };
 
     const hydrateRow = (r: any): Model => {
-      const inst = new ModelClass(r);
-      inst._exists = true;
-      inst._original = { ...r };
-      inst._dirty = {};
-      return inst;
+      return ModelClass.hydrate(r);
     };
 
     const originalGet = qb.get.bind(qb);
@@ -1012,6 +1084,19 @@ export class Model {
 
     const formatSqlDate = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
+    const toDatabaseAttributes = () => {
+      const attrs = { ...this._attributes };
+      if (Ctor.encrypted && Array.isArray(Ctor.encrypted) && Ctor.encrypted.length > 0) {
+        for (const col of Ctor.encrypted) {
+          const val = attrs[col];
+          if (val !== undefined && val !== null && !Crypt.isEncrypted(val)) {
+            attrs[col] = Crypt.encrypt(val);
+          }
+        }
+      }
+      return attrs;
+    };
+
     if (!this._exists) {
       await registry.execute('beforeCreate', this);
 
@@ -1025,7 +1110,7 @@ export class Model {
       if (createdCol && !this._attributes[createdCol]) this._attributes[createdCol] = formatSqlDate();
       if (updatedCol && !this._attributes[updatedCol]) this._attributes[updatedCol] = formatSqlDate();
 
-      const res = await Database.table(table, conn).insert(this._attributes);
+      const res = await Database.table(table, conn).insert(toDatabaseAttributes());
       if (res.insertId && !this._attributes[pk]) this._attributes[pk] = res.insertId;
       this._exists = true;
       this._original = { ...this._attributes };
@@ -1041,7 +1126,7 @@ export class Model {
       if (updatedCol) this._attributes[updatedCol] = formatSqlDate();
 
       const id = this._attributes[pk];
-      await Database.table(table, conn).where(pk, id).update(this._attributes);
+      await Database.table(table, conn).where(pk, id).update(toDatabaseAttributes());
       this._original = { ...this._attributes };
       this._dirty = {};
 

@@ -22,6 +22,7 @@ import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagn
 import { HealthCheck, type HealthCheckFunction } from '../diagnostics/health-check.js';
 import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
 import { TcpServer, type TcpServerOptions } from '../tcp/tcp-server.js';
+import { registerQueueDashboard, type QueueDashboardOptions } from '../queue/dashboard.js';
 
 
 
@@ -89,6 +90,22 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
       }
     }
     return this.useDiagnostics(options);
+  }
+
+  /**
+   * Mounts the interactive real-time Queue & Job Monitoring Horizon Dashboard.
+   *
+   * @example
+   * app.useQueueDashboard('/__aero/queue', {
+   *   auth: (ctx) => ctx.session?.get('user')?.role === 'admin'
+   * });
+   */
+  public useQueueDashboard(
+    mountPath = '/__aero/queue',
+    options?: QueueDashboardOptions
+  ): this {
+    registerQueueDashboard(this, mountPath, options);
+    return this;
   }
 
   /**

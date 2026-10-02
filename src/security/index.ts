@@ -59,3 +59,5 @@ export {
 export * from './totp.js';
 export * from './vault.js';
 export * from './signed-url.js';
+export * from './encryption.js';
+export * from './fingerprint.js';

@@ -46,10 +46,55 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   protected havingClauses: { column: string; operator: string; value: unknown }[] = [];
 
   public _eagerLoads: string[] = [];
+  protected preferWriteConnection = false;
+  protected customReadAdapter?: DatabaseAdapter;
 
   constructor(tableName: string, adapter: DatabaseAdapter) {
     this.tableName = tableName;
     this.adapter = adapter;
+  }
+
+  /**
+   * Forces this query to execute against the primary write connection (for read-your-own-writes consistency).
+   */
+  public useWriteConnection(): this {
+    this.preferWriteConnection = true;
+    return this;
+  }
+
+  /**
+   * Targets a specific read replica adapter or connection name.
+   */
+  public useReadConnection(adapterOrName?: DatabaseAdapter | string): this {
+    this.preferWriteConnection = false;
+    if (adapterOrName) {
+      this.customReadAdapter = typeof adapterOrName === 'string'
+        ? Database.getAdapter(adapterOrName)
+        : adapterOrName;
+    }
+    return this;
+  }
+
+  /**
+   * Resolves the appropriate adapter for read queries.
+   */
+  public resolveReadAdapter(): DatabaseAdapter {
+    if (this.customReadAdapter) return this.customReadAdapter;
+    if (this.preferWriteConnection) return this.resolveWriteAdapter();
+    if (Database.hasReplication()) {
+      return Database.getReadAdapter();
+    }
+    return this.adapter;
+  }
+
+  /**
+   * Resolves the appropriate adapter for write queries.
+   */
+  public resolveWriteAdapter(): DatabaseAdapter {
+    if (Database.hasReplication()) {
+      return Database.getWriteAdapter();
+    }
+    return this.adapter;
   }
 
   public select(...columns: string[]): this {
@@ -305,11 +350,12 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Executes query and returns array of records.
    */
   public async get(): Promise<T[]> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      return this.executeInMemory();
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      return this.executeInMemory(adapter);
     }
     const { sql, bindings } = this.toSQL();
-    return this.adapter.query<T>(sql, bindings);
+    return adapter.query<T>(sql, bindings);
   }
 
   /**
@@ -334,8 +380,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Counts the matching records.
    */
   public async count(column = '*'): Promise<number> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
       return rows.length;
     }
     const { sql: whereSql, bindings } = this.compileWhere();
@@ -345,7 +392,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
     }
     const countSql = `SELECT COUNT(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
-    const res = await this.adapter.query<{ total: number }>(countSql, bindings);
+    const res = await adapter.query<{ total: number }>(countSql, bindings);
     return Number(res[0]?.total || 0);
   }
 
@@ -353,8 +400,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Sums the given column.
    */
   public async sum(column: string): Promise<number> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
       return rows.reduce((acc, r) => acc + (Number(r[column]) || 0), 0);
     }
     const { sql: whereSql, bindings } = this.compileWhere();
@@ -364,7 +412,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
     }
     const sumSql = `SELECT SUM(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
-    const res = await this.adapter.query<{ total: number | string | null }>(sumSql, bindings);
+    const res = await adapter.query<{ total: number | string | null }>(sumSql, bindings);
     return Number(res[0]?.total || 0);
   }
 
@@ -372,8 +420,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Calculates the average of the given column.
    */
   public async avg(column: string): Promise<number> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
       if (rows.length === 0) return 0;
       const sum = rows.reduce((acc, r) => acc + (Number(r[column]) || 0), 0);
       return sum / rows.length;
@@ -385,7 +434,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
     }
     const avgSql = `SELECT AVG(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
-    const res = await this.adapter.query<{ total: number | string | null }>(avgSql, bindings);
+    const res = await adapter.query<{ total: number | string | null }>(avgSql, bindings);
     return Number(res[0]?.total || 0);
   }
 
@@ -393,8 +442,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Finds the minimum value of the given column.
    */
   public async min(column: string): Promise<number | null> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
       if (rows.length === 0) return null;
       return Math.min(...rows.map((r) => Number(r[column]) || 0));
     }
@@ -405,7 +455,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
     }
     const minSql = `SELECT MIN(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
-    const res = await this.adapter.query<{ total: number | string | null }>(minSql, bindings);
+    const res = await adapter.query<{ total: number | string | null }>(minSql, bindings);
     return res[0]?.total !== null && res[0]?.total !== undefined ? Number(res[0]?.total) : null;
   }
 
@@ -413,8 +463,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Finds the maximum value of the given column.
    */
   public async max(column: string): Promise<number | null> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(this.adapter.getTableData(this.tableName));
+    const adapter = this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
       if (rows.length === 0) return null;
       return Math.max(...rows.map((r) => Number(r[column]) || 0));
     }
@@ -425,7 +476,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       joinSql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
     }
     const maxSql = `SELECT MAX(${column}) as total FROM ${this.tableName}${joinSql}${whereSql}`;
-    const res = await this.adapter.query<{ total: number | string | null }>(maxSql, bindings);
+    const res = await adapter.query<{ total: number | string | null }>(maxSql, bindings);
     return res[0]?.total !== null && res[0]?.total !== undefined ? Number(res[0]?.total) : null;
   }
 
@@ -457,9 +508,10 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   public async insert(data: Partial<T> | Partial<T>[]): Promise<{ insertId?: number | string; affectedRows: number }> {
     const records = Array.isArray(data) ? data : [data];
     if (records.length === 0) return { affectedRows: 0 };
+    const adapter = this.resolveWriteAdapter();
 
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const tableRows = this.adapter.getTableData(this.tableName);
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const tableRows = adapter.getTableData(this.tableName);
       const defaults = Database.tableDefaults.get(this.tableName) || {};
       let lastId: any;
       for (const rec of records) {
@@ -477,7 +529,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     const allPlaceholders = records.map(() => rowPlaceholders).join(', ');
     let sql = `INSERT INTO ${this.tableName} (${cols}) VALUES ${allPlaceholders}`;
 
-    const isPg = ['pg', 'postgres', 'postgresql'].includes(this.adapter.dialect || '');
+    const isPg = ['pg', 'postgres', 'postgresql'].includes(adapter.dialect || '');
     if (isPg && !keys.includes('id')) {
       sql += ' RETURNING id';
     }
@@ -489,15 +541,17 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       }
     }
 
-    return this.adapter.execute(sql, bindings);
+    return adapter.execute(sql, bindings);
   }
 
   /**
    * Updates matching records safely without fragile string splitting.
    */
   public async update(data: Partial<T>): Promise<number> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const tableRows = this.adapter.getTableData(this.tableName);
+    const adapter = this.resolveWriteAdapter();
+
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const tableRows = adapter.getTableData(this.tableName);
       let updatedCount = 0;
       for (const row of tableRows) {
         if (this.matchesWhere(row)) {
@@ -514,7 +568,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     const { sql: whereSql, bindings: whereBindings } = this.compileWhere();
 
     const sql = `UPDATE ${this.tableName} SET ${setClause}${whereSql}`;
-    const res = await this.adapter.execute(sql, [...setBindings, ...whereBindings]);
+    const res = await adapter.execute(sql, [...setBindings, ...whereBindings]);
     return res.affectedRows;
   }
 
@@ -522,8 +576,10 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Deletes matching records safely without fragile string splitting.
    */
   public async delete(): Promise<number> {
-    if (this.adapter instanceof MemoryDatabaseAdapter) {
-      const tableRows = this.adapter.getTableData(this.tableName);
+    const adapter = this.resolveWriteAdapter();
+
+    if (adapter instanceof MemoryDatabaseAdapter) {
+      const tableRows = adapter.getTableData(this.tableName);
       let deleted = 0;
       for (let i = tableRows.length - 1; i >= 0; i--) {
         if (this.matchesWhere(tableRows[i]!)) {
@@ -536,7 +592,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
 
     const { sql: whereSql, bindings: whereBindings } = this.compileWhere();
     const sql = `DELETE FROM ${this.tableName}${whereSql}`;
-    const res = await this.adapter.execute(sql, whereBindings);
+    const res = await adapter.execute(sql, whereBindings);
     return res.affectedRows;
   }
 
@@ -643,8 +699,8 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     return matches;
   }
 
-  private executeInMemory(): T[] {
-    const rawRows = (this.adapter as MemoryDatabaseAdapter).getTableData(this.tableName);
+  private executeInMemory(adapter: DatabaseAdapter = this.resolveReadAdapter()): T[] {
+    const rawRows = (adapter as MemoryDatabaseAdapter).getTableData(this.tableName);
     const filtered = this.filterMemoryRows(rawRows);
     return filtered.map((r) => {
       if (this.columns.length === 1 && this.columns[0] === '*') {

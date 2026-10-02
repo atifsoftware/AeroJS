@@ -94,6 +94,7 @@ export {
   Model,
   Relation,
   computed,
+  encrypted,
   QueryBuilder,
   Schema,
   TableBlueprint,
@@ -350,8 +351,9 @@ export {
   MemorySessionDriver,
   FileSessionDriver,
   RedisSessionDriver,
+  CookieSessionDriver,
   type SessionDriver,
-} from './session/session-driver.js';
+} from './session/index.js';
 
 // Immutable Audit Trail (Section 38)
 export {

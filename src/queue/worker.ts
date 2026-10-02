@@ -28,6 +28,15 @@ export interface FailedJobRecord {
 
 export class QueueWorker {
   public static readonly globalFailedJobs: FailedJobRecord[] = [];
+  public static processedCount = 0;
+  public static failedCount = 0;
+
+  public static resetMetrics(): void {
+    this.processedCount = 0;
+    this.failedCount = 0;
+    this.globalFailedJobs.length = 0;
+  }
+
   public readonly failedJobs: FailedJobRecord[] = [];
   private driver: QueueDriver;
   private queue: string;
@@ -135,6 +144,7 @@ export class QueueWorker {
 
     try {
       await jobInstance.handle();
+      QueueWorker.processedCount++;
       // Job succeeded -> remove from queue
       await this.driver.delete(record.id, this.queue);
     } catch (err: any) {
@@ -149,6 +159,7 @@ export class QueueWorker {
         await this.driver.release(record.id, delay, this.queue);
       } else {
         // Max retries reached -> record into Dead Letter Queue, call failed hook, and delete from active queue
+        QueueWorker.failedCount++;
         const failedRecord: FailedJobRecord = {
           id: record.id,
           queue: this.queue,

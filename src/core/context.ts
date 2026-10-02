@@ -85,6 +85,10 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     this.req.params = val as unknown as RouteParams;
   }
 
+  public get ip(): string {
+    return this.req.ip;
+  }
+
   public get body(): unknown {
     return this.req.body;
   }

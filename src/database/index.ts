@@ -22,6 +22,7 @@ export {
   Model,
   Relation,
   computed,
+  encrypted,
   type RelationDefinition,
   type ManyToManyOptions,
   type HasManyThroughOptions,

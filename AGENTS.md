@@ -817,3 +817,119 @@ aero make:policy PatientPolicy
 aero make:event PatientAdmitted
 aero make:listener NotifyDoctor
 ```
+
+---
+
+## 12. Advanced Enterprise Architecture (v0.4.0)
+
+### 12.1 Field-Level AES-256-GCM Encryption (`Crypt`, `@encrypted`)
+Protect sensitive compliance data (SSN, medical records, credit cards, credentials) transparently at rest:
+
+```typescript
+import { Model, encrypted, Crypt } from 'aerojs';
+
+// Encrypt standalone strings or objects
+const ciphertext = Crypt.encrypt('secret-data');
+const plaintext = Crypt.decrypt(ciphertext);
+
+// Model field-level transparent encryption
+export class Patient extends Model {
+  public static override table = 'patients';
+  public static override primaryKey = 'id';
+  public static override fillable = ['name', 'ssn', 'medical_record', 'diagnosis'];
+  
+  // Mark fields for automatic AES-256-GCM encryption
+  public static override encrypted = ['ssn', 'medical_record'];
+
+  // Or use TypeScript property decorator:
+  // @encrypted()
+  // public ssn!: string;
+}
+
+// Automatically encrypted on .save() and decrypted on .find() / .all() / .toJSON()
+const patient = await Patient.create({
+  name: 'John Doe',
+  ssn: '123-45-6789',
+  medical_record: 'Asthma diagnosis',
+});
+```
+
+### 12.2 Database Read Replicas & Master-Slave Routing
+Scale database read throughput across horizontal replica pools with automatic write pinning and master-slave routing:
+
+```typescript
+import { Database, DB } from 'aerojs';
+
+Database.configureReplication({
+  write: { client: 'pg', connection: { host: 'primary.db.internal' } },
+  read: [
+    { client: 'pg', connection: { host: 'replica-1.db.internal' } },
+    { client: 'pg', connection: { host: 'replica-2.db.internal' } },
+  ],
+});
+
+// SELECT queries automatically balance across replicas in round-robin:
+const users = await DB.table('users').where('is_active', true).get();
+
+// INSERT / UPDATE / DELETE automatically target the primary write connection:
+await DB.table('users').insert({ name: 'Alice', email: 'alice@example.com' });
+
+// Read-your-own-writes consistency via .useWriteConnection():
+const freshUser = await DB.table('users').useWriteConnection().where('email', 'alice@example.com').first();
+```
+
+### 12.3 Interactive Queue Horizon Dashboard
+A dark-mode glassmorphic real-time administration dashboard for inspecting background job queues and metrics:
+
+```typescript
+import { app } from './bootstrap.js';
+
+// Mount real-time queue inspector GUI & REST API
+app.useQueueDashboard('/__aero/queue', {
+  auth: (ctx) => ctx.state?.user?.role === 'admin', // Optional authorization guard
+});
+```
+- Web UI: Navigate to `http://localhost:3000/__aero/queue`
+- REST Endpoints:
+  - `GET /__aero/queue/api/metrics` — Active jobs, processed counts, failure rates, queue throughput.
+  - `GET /__aero/queue/api/failed` — Failed job payloads, error messages, and stack traces.
+  - `POST /__aero/queue/api/retry/:id` — Instant dead-letter job retry.
+  - `POST /__aero/queue/api/retry-all` — Batch retry all failed jobs.
+  - `DELETE /__aero/queue/api/purge-all` — Purge failed jobs.
+
+### 12.4 Encrypted Stateless Cookie Session Driver
+Stateless, horizontally scalable user session storage secured via AES-256-GCM authenticated encryption:
+
+```typescript
+import { SessionManager, CookieSessionDriver } from 'aerojs';
+
+const sessionManager = new SessionManager({
+  driver: 'cookie',
+  secret: process.env.APP_KEY, // 32-byte secret key
+  cookie: {
+    name: 'aero_session',
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+  },
+});
+```
+
+### 12.5 Request Fingerprinting & Anti-Hijack Guard
+Prevent session hijacking and credential replay attacks across network switches or spoofed browsers:
+
+```typescript
+import { fingerprintGuard, RequestFingerprint } from 'aerojs';
+
+// Generate or inspect request fingerprint
+const hash = RequestFingerprint.generate(ctx, { checkIp: false });
+
+// Bind to security middleware stack
+app.use(fingerprintGuard({
+  strict: true,
+  checkIp: false, // Set true for high-security intranets or false for mobile networks
+  onHijackAttempt: (ctx, expected, actual) => {
+    ctx.logger?.warn(`Session hijacking attempt detected: expected ${expected}, got ${actual}`);
+  },
+}));
+```

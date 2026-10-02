@@ -186,10 +186,71 @@ export function withNestedTransactions(adapter: DatabaseAdapter, depth = 0): Dat
   });
 }
 
+export interface ReplicationConfig {
+  write: string | DatabaseAdapter;
+  read: Array<string | DatabaseAdapter>;
+}
+
 export class Database {
   public static readonly tableDefaults = new Map<string, Record<string, unknown>>();
   private static defaultAdapter: DatabaseAdapter = new MemoryDatabaseAdapter();
   private static adapters = new Map<string, DatabaseAdapter>();
+  private static replicationConfig?: ReplicationConfig;
+  private static replicaRoundRobinIndex = 0;
+
+  /**
+   * Configures primary write and read replica routing.
+   *
+   * @example
+   * Database.configureReplication({
+   *   write: 'primary_master',
+   *   read: ['replica_1', 'replica_2'],
+   * });
+   */
+  public static configureReplication(config: ReplicationConfig): void {
+    this.replicationConfig = config;
+    this.replicaRoundRobinIndex = 0;
+  }
+
+  /**
+   * Checks whether database read replication is currently configured.
+   */
+  public static hasReplication(): boolean {
+    return !!this.replicationConfig && this.replicationConfig.read.length > 0;
+  }
+
+  /**
+   * Returns the primary write database adapter.
+   */
+  public static getWriteAdapter(): DatabaseAdapter {
+    if (this.replicationConfig) {
+      return typeof this.replicationConfig.write === 'string'
+        ? this.getAdapter(this.replicationConfig.write)
+        : this.replicationConfig.write;
+    }
+    return this.defaultAdapter;
+  }
+
+  /**
+   * Returns a read replica database adapter, automatically balanced round-robin across replicas.
+   */
+  public static getReadAdapter(): DatabaseAdapter {
+    if (this.replicationConfig && this.replicationConfig.read.length > 0) {
+      const replicas = this.replicationConfig.read;
+      const target = replicas[this.replicaRoundRobinIndex % replicas.length]!;
+      this.replicaRoundRobinIndex++;
+      return typeof target === 'string' ? this.getAdapter(target) : target;
+    }
+    return this.getWriteAdapter();
+  }
+
+  /**
+   * Resets replication configuration.
+   */
+  public static resetReplication(): void {
+    this.replicationConfig = undefined;
+    this.replicaRoundRobinIndex = 0;
+  }
 
   public static setAdapter(adapter: DatabaseAdapter, name = 'default'): void {
     this.adapters.set(name, adapter);

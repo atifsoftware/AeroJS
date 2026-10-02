@@ -11,3 +11,4 @@ export * from './worker.js';
 export * from './queue-manager.js';
 
 export * from './drivers/redis-queue-driver.js';
+export * from './dashboard.js';

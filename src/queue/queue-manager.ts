@@ -6,7 +6,7 @@
 import type { QueueDriver, PushOptions } from './drivers/queue-driver.js';
 import { MemoryQueueDriver } from './drivers/memory-queue-driver.js';
 import { DatabaseQueueDriver } from './drivers/database-queue-driver.js';
-import { QueueWorker, type WorkerOptions } from './worker.js';
+import { QueueWorker, type WorkerOptions, type FailedJobRecord } from './worker.js';
 import { Job } from './job.js';
 import { RedisQueueDriver } from './drivers/redis-queue-driver.js';
 import { RedisClient } from '../redis/redis-client.js';
@@ -124,10 +124,81 @@ export class QueueManager {
     return worker;
   }
 
+  /**
+   * Retrieves live metrics across queues and worker executions.
+   */
+  public async getMetrics(queue = 'default'): Promise<{
+    pending: number;
+    completed: number;
+    failed: number;
+    failedJobsCount: number;
+    connection: string;
+  }> {
+    const driver = this.driver();
+    const pending = await driver.size(queue);
+    return {
+      pending,
+      completed: QueueWorker.processedCount,
+      failed: QueueWorker.failedCount,
+      failedJobsCount: QueueWorker.globalFailedJobs.length,
+      connection: this.defaultConnection,
+    };
+  }
+
+  /**
+   * Returns all recorded failed jobs.
+   */
+  public getFailedJobs(): FailedJobRecord[] {
+    return [...QueueWorker.globalFailedJobs];
+  }
+
+  /**
+   * Retries a failed job by ID.
+   */
+  public async retryFailedJob(id: string | number): Promise<boolean> {
+    const index = QueueWorker.globalFailedJobs.findIndex((j) => String(j.id) === String(id));
+    if (index === -1) return false;
+
+    const failed = QueueWorker.globalFailedJobs[index]!;
+    await this.driver().push(failed.payload, { queue: failed.queue });
+    QueueWorker.globalFailedJobs.splice(index, 1);
+    return true;
+  }
+
+  /**
+   * Deletes a failed job record.
+   */
+  public deleteFailedJob(id: string | number): boolean {
+    const index = QueueWorker.globalFailedJobs.findIndex((j) => String(j.id) === String(id));
+    if (index === -1) return false;
+    QueueWorker.globalFailedJobs.splice(index, 1);
+    return true;
+  }
+
+  /**
+   * Retries all failed jobs.
+   */
+  public async retryAllFailedJobs(): Promise<number> {
+    const jobs = [...QueueWorker.globalFailedJobs];
+    QueueWorker.globalFailedJobs.length = 0;
+    for (const job of jobs) {
+      await this.driver().push(job.payload, { queue: job.queue });
+    }
+    return jobs.length;
+  }
+
+  /**
+   * Purges all failed jobs.
+   */
+  public purgeAllFailedJobs(): void {
+    QueueWorker.globalFailedJobs.length = 0;
+  }
+
   public reset(): void {
     this.instantiatedDrivers.clear();
     this.connectionConfigs.clear();
     this.defaultConnection = 'memory';
+    QueueWorker.resetMetrics();
   }
 }
 
