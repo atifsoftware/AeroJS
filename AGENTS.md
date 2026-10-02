@@ -337,16 +337,17 @@ const db = knex({
 useKnex(db);
 ```
 
-#### 3. Using SQLite (`client: 'better-sqlite3'`)
-Change `.env` to `DB_CONNECTION=sqlite`, `DB_DATABASE=storage/database.sqlite`:
+#### 3. Using SQLite (Native `useSqlite` or `better-sqlite3`)
 ```typescript
-import knex from 'knex';
-import { useKnex } from 'aerojs';
-import { databaseConfig } from './config/database.js';
+import { useSqlite, useKnex } from 'aerojs';
 
+// Option A: Built-in Native SQLite (Node.js >= 22 zero-dependency node:sqlite)
+useSqlite('storage/database.sqlite'); // or ':memory:'
+
+// Option B: SQLite via Knex (better-sqlite3)
 const db = knex({
   client: 'better-sqlite3',
-  connection: databaseConfig.connections.sqlite,
+  connection: { filename: 'storage/database.sqlite' },
   useNullAsDefault: true,
 });
 useKnex(db);

@@ -82,3 +82,9 @@ export {
 export {
   useDrizzle,
 } from './drizzle.js';
+
+export {
+  SqliteDatabaseAdapter,
+  useSqlite,
+} from './sqlite.js';
+

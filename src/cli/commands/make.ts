@@ -13,7 +13,7 @@ export function makeController(name: string, targetDir = 'app/controllers'): str
 
   mkdirSync(dirname(filePath), { recursive: true });
 
-  const content = `import type { AeroContext } from 'aero';
+  const content = `import type { AeroContext } from 'aerojs';
 
 export class ${className} {
   /**
@@ -77,7 +77,7 @@ export function makeModel(name: string, options: { migration?: boolean; targetDi
 
   mkdirSync(dirname(filePath), { recursive: true });
 
-  const content = `import { Model } from 'aero';
+  const content = `import { Model } from 'aerojs';
 
 export class ${className} extends Model {
   public static override table = '${tableName}';
@@ -108,7 +108,7 @@ export function makeMigration(name: string, targetDir = 'database/migrations'): 
 
   const tableName = name.replace(/^create_/i, '').replace(/_table$/i, '') || 'items';
 
-  const content = `import { Schema, type Migration } from 'aero';
+  const content = `import { Schema, type Migration } from 'aerojs';
 
 export const migration: Migration = {
   async up(): Promise<void> {
@@ -163,7 +163,7 @@ export function makeMiddleware(name: string, targetDir = 'app/middleware'): stri
 
   mkdirSync(dirname(filePath), { recursive: true });
 
-  const content = `import type { Middleware } from 'aero';
+  const content = `import type { Middleware } from 'aerojs';
 
 export const ${cleanName.toLowerCase()}Middleware: Middleware = async (ctx, next) => {
   // Logic executed before handling route

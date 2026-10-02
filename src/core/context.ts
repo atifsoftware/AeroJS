@@ -11,6 +11,7 @@ import type { CookieOptions, ParsedQuery, RouteParams } from './types.js';
 import { parseCookies } from './utils.js';
 import { SseStream, type SseOptions } from '../sse/sse.js';
 import { UrlSigner } from '../security/signed-url.js';
+import { Database } from '../database/connection.js';
 
 import {
   AeroError,
@@ -115,6 +116,16 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
   }
 
   /**
+   * Direct access to AeroJS Native Database (QueryBuilder & Connection Manager).
+   */
+  public get db(): typeof Database {
+    if (this.container && this.container.has('db')) {
+      return this.container.resolve('db');
+    }
+    return Database;
+  }
+
+  /**
    * Direct access to underlying Knex.js query builder instance if configured.
    */
   public get knex(): any {
@@ -142,6 +153,44 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
       return this.container.resolve('drizzle');
     }
     return (globalThis as any).__AERO_DRIZZLE__;
+  }
+
+  /**
+   * Direct access to underlying Native SQLite adapter if configured.
+   */
+  public get sqlite(): any {
+    if (this.container && this.container.has('sqlite')) {
+      return this.container.resolve('sqlite');
+    }
+    return (globalThis as any).__AERO_SQLITE__;
+  }
+
+  /**
+   * Returns strongly-typed Drizzle ORM instance.
+   */
+  public getDrizzle<T = any>(): T {
+    return this.drizzle as T;
+  }
+
+  /**
+   * Returns strongly-typed Prisma Client instance.
+   */
+  public getPrisma<T = any>(): T {
+    return this.prisma as T;
+  }
+
+  /**
+   * Returns strongly-typed Knex instance.
+   */
+  public getKnex<T = any>(): T {
+    return this.knex as T;
+  }
+
+  /**
+   * Returns strongly-typed SQLite database adapter.
+   */
+  public getSqlite<T = any>(): T {
+    return this.sqlite as T;
   }
 
   public get headers(): IncomingMessage['headers'] {

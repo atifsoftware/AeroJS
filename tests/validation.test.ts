@@ -98,4 +98,43 @@ describe('Schema Validation', () => {
       await app.close();
     }
   });
+
+  it('rejects vulnerable ReDoS patterns and safely handles invalid regex syntax', () => {
+    // 1. ReDoS vulnerable pattern (nested quantifiers)
+    const redosSchema = {
+      type: 'object',
+      properties: {
+        code: { type: 'string', pattern: '^(a+)+$' },
+      },
+    };
+    const redosErr = validateSchema(redosSchema, { code: 'aaaaaaaaaaaaaaaaaaaaaaaa!' });
+    expect(redosErr.length).toBeGreaterThan(0);
+    expect(redosErr[0]?.keyword).toBe('pattern');
+    expect(redosErr[0]?.message).toContain('potentially unsafe regular expression');
+
+    // 2. Invalid syntax regex
+    const invalidRegexSchema = {
+      type: 'object',
+      properties: {
+        code: { type: 'string', pattern: '[a-' },
+      },
+    };
+    const syntaxErr = validateSchema(invalidRegexSchema, { code: 'abc' });
+    expect(syntaxErr.length).toBeGreaterThan(0);
+    expect(syntaxErr[0]?.keyword).toBe('pattern');
+    expect(syntaxErr[0]?.message).toContain('Invalid regular expression pattern');
+
+    // 3. Valid safe pattern
+    const safeSchema = {
+      type: 'object',
+      properties: {
+        code: { type: 'string', pattern: '^[A-Z]{3}-\\d{3}$' },
+      },
+    };
+    expect(validateSchema(safeSchema, { code: 'ABC-123' })).toEqual([]);
+    const failSafe = validateSchema(safeSchema, { code: 'abc-123' });
+    expect(failSafe.length).toBe(1);
+    expect(failSafe[0]?.message).toContain('does not match pattern');
+  });
 });
+

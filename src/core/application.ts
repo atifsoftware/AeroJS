@@ -23,6 +23,7 @@ import { HealthCheck, type HealthCheckFunction } from '../diagnostics/health-che
 import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
 import { TcpServer, type TcpServerOptions } from '../tcp/tcp-server.js';
 import { registerQueueDashboard, type QueueDashboardOptions } from '../queue/dashboard.js';
+import { useSqlite } from '../database/sqlite.js';
 
 
 
@@ -166,10 +167,27 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
    * Configures Knex as the underlying database query engine and registers it in IoC container.
    */
   public useKnex(knexInstance: any, connectionName = 'default'): this {
-    import('../database/knex.js').then(({ useKnex: connectKnex }) => {
-      connectKnex(knexInstance, connectionName);
-    });
+    import('../database/knex.js')
+      .then(({ useKnex: connectKnex }) => {
+        connectKnex(knexInstance, connectionName);
+      })
+      .catch((err) => {
+        console.error('[AeroJS] Failed to initialize Knex adapter:', err);
+      });
     this.container.bind('knex', () => knexInstance);
+    return this;
+  }
+
+  /**
+   * Configures Native SQLite (using Node.js built-in node:sqlite) as the database engine.
+   */
+  public useSqlite(locationOrDb: string | any = ':memory:', connectionName = 'default'): this {
+    try {
+      const adapter = useSqlite(locationOrDb, connectionName);
+      this.container.bind('sqlite', () => adapter);
+    } catch (err) {
+      console.error('[AeroJS] Failed to initialize SQLite adapter:', err);
+    }
     return this;
   }
 
@@ -235,9 +253,13 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
    * Configures Prisma Client as an ORM in Aero, binding it to IoC container and ctx.prisma.
    */
   public usePrisma(prismaClient: any): this {
-    import('../database/prisma.js').then(({ usePrisma: connectPrisma }) => {
-      connectPrisma(prismaClient);
-    });
+    import('../database/prisma.js')
+      .then(({ usePrisma: connectPrisma }) => {
+        connectPrisma(prismaClient);
+      })
+      .catch((err) => {
+        console.error('[AeroJS] Failed to initialize Prisma adapter:', err);
+      });
     this.container.bind('prisma', () => prismaClient);
     return this;
   }
@@ -246,9 +268,13 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
    * Configures Drizzle ORM in Aero, binding it to IoC container and ctx.drizzle.
    */
   public useDrizzle(drizzleDb: any): this {
-    import('../database/drizzle.js').then(({ useDrizzle: connectDrizzle }) => {
-      connectDrizzle(drizzleDb);
-    });
+    import('../database/drizzle.js')
+      .then(({ useDrizzle: connectDrizzle }) => {
+        connectDrizzle(drizzleDb);
+      })
+      .catch((err) => {
+        console.error('[AeroJS] Failed to initialize Drizzle adapter:', err);
+      });
     this.container.bind('drizzle', () => drizzleDb);
     return this;
   }

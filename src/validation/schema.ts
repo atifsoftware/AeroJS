@@ -34,6 +34,44 @@ export interface RouteValidationSchema {
   response?: Record<string | number, JSONSchemaDefinition>;
 }
 
+const REGEX_CACHE_LIMIT = 500;
+const regexCache = new Map<string, RegExp>();
+
+/**
+ * Checks whether a regular expression pattern is safe from catastrophic backtracking (ReDoS).
+ * Rejects patterns containing nested quantifiers, repeated groups with inner quantifiers,
+ * or excessively long pattern strings.
+ */
+export function isSafePattern(pattern: string): boolean {
+  if (typeof pattern !== 'string' || pattern.length > 500) {
+    return false;
+  }
+  // Check for nested quantifiers: (x+)+, (x*)+, (x+)*, (x*)*, (x{1,})+
+  const nestedQuantifiers = /\((?:[^()]*[+*]|\S*\{\d+,?\d*\})\)[+*]|\([^)]*[+*]\)\{\d+,?\d*\}/;
+  if (nestedQuantifiers.test(pattern)) {
+    return false;
+  }
+  // Check for repeated groups containing alternations with repetition: (a|aa)+, (a+|b+)+
+  const repeatedAlternation = /\((?:[^()|]+\|)+[^()]+\)[+*]/;
+  if (repeatedAlternation.test(pattern)) {
+    return false;
+  }
+  return true;
+}
+
+function getCachedRegExp(pattern: string): RegExp {
+  let reg = regexCache.get(pattern);
+  if (!reg) {
+    if (regexCache.size >= REGEX_CACHE_LIMIT) {
+      const firstKey = regexCache.keys().next().value;
+      if (firstKey) regexCache.delete(firstKey);
+    }
+    reg = new RegExp(pattern);
+    regexCache.set(pattern, reg);
+  }
+  return reg;
+}
+
 export function validateSchema(
   schema: JSONSchemaDefinition | unknown,
   data: unknown,
@@ -102,13 +140,29 @@ export function validateSchema(
       });
     }
     if (typeof s.pattern === 'string') {
-      const reg = new RegExp(s.pattern);
-      if (!reg.test(data)) {
+      if (!isSafePattern(s.pattern)) {
         errors.push({
           keyword: 'pattern',
           dataPath: path,
-          message: `String does not match pattern ${s.pattern}`,
+          message: 'Pattern rejected: potentially unsafe regular expression (ReDoS risk)',
         });
+      } else {
+        try {
+          const reg = getCachedRegExp(s.pattern);
+          if (!reg.test(data)) {
+            errors.push({
+              keyword: 'pattern',
+              dataPath: path,
+              message: `String does not match pattern ${s.pattern}`,
+            });
+          }
+        } catch {
+          errors.push({
+            keyword: 'pattern',
+            dataPath: path,
+            message: `Invalid regular expression pattern: ${s.pattern}`,
+          });
+        }
       }
     }
     if (s.format === 'email') {

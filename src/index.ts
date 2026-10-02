@@ -91,6 +91,8 @@ export {
   Database,
   DB,
   MemoryDatabaseAdapter,
+  SqliteDatabaseAdapter,
+  useSqlite,
   Model,
   Relation,
   computed,

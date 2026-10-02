@@ -84,4 +84,26 @@ describe('AeroContext', () => {
     expect(() => ctx.throw(405)).toThrow('Method Not Allowed');
     expect(() => ctx.throw(500, 'Boom')).toThrow('Boom');
   });
+
+  it('provides access to native database and pluggable ORM engines', () => {
+    const ctx = createMockContext();
+    expect(ctx.db).toBeDefined();
+    expect(typeof ctx.db.table).toBe('function');
+
+    (globalThis as any).__AERO_SQLITE__ = { isSqlite: true };
+    (globalThis as any).__AERO_KNEX__ = { isKnex: true };
+    (globalThis as any).__AERO_DRIZZLE__ = { isDrizzle: true };
+    (globalThis as any).__AERO_PRISMA__ = { isPrisma: true };
+
+    expect(ctx.sqlite).toEqual({ isSqlite: true });
+    expect(ctx.knex).toEqual({ isKnex: true });
+    expect(ctx.drizzle).toEqual({ isDrizzle: true });
+    expect(ctx.prisma).toEqual({ isPrisma: true });
+
+    expect(ctx.getSqlite<{ isSqlite: boolean }>().isSqlite).toBe(true);
+    expect(ctx.getKnex<{ isKnex: boolean }>().isKnex).toBe(true);
+    expect(ctx.getDrizzle<{ isDrizzle: boolean }>().isDrizzle).toBe(true);
+    expect(ctx.getPrisma<{ isPrisma: boolean }>().isPrisma).toBe(true);
+  });
 });
+

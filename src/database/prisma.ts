@@ -11,14 +11,15 @@ export interface PrismaIntegrationOptions {
 /**
  * Registers Prisma Client into Aero's global context and IoC container.
  */
-export function usePrisma(prismaClient: any, options: PrismaIntegrationOptions = {}): any {
+export function usePrisma<T = any>(prismaClient: T, options: PrismaIntegrationOptions = {}): T {
   (globalThis as any).__AERO_PRISMA__ = prismaClient;
 
   if (options.autoDisconnect ?? true) {
     const disconnectHandler = async () => {
       try {
-        if (prismaClient && typeof prismaClient.$disconnect === 'function') {
-          await prismaClient.$disconnect();
+        const client = prismaClient as any;
+        if (client && typeof client.$disconnect === 'function') {
+          await client.$disconnect();
         }
       } catch {
         // Ignore during shutdown

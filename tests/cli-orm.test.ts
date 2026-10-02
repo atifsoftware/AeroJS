@@ -77,6 +77,25 @@ describe('AeroJS CLI & ORM Integrations (Drizzle & Prisma)', () => {
       expect(res.status).toBe(200);
       expect(res.json()[0].title).toBe('Drizzle Post');
     });
+
+    it('integrates native SQLite and exposes ctx.sqlite', async () => {
+      const app = new Aero();
+      app.useSqlite(':memory:');
+
+      app.get('/sqlite-check', async (ctx) => {
+        expect(ctx.sqlite).toBeDefined();
+        await ctx.sqlite.execute('CREATE TABLE test_items (id INTEGER PRIMARY KEY, title TEXT)');
+        await ctx.sqlite.execute('INSERT INTO test_items (title) VALUES (?)', ['Item 1']);
+        const items = await ctx.sqlite.query('SELECT * FROM test_items');
+        ctx.status(200).json(items);
+      });
+
+      const client = createTestClient(app);
+      const res = await client.get('/sqlite-check');
+
+      expect(res.status).toBe(200);
+      expect(res.json()[0].title).toBe('Item 1');
+    });
   });
 
   describe('Aero CLI Tooling', () => {

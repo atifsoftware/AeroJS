@@ -134,6 +134,42 @@ describe('AeroJS Database & Active Record ORM (Step 1)', () => {
       expect(deleted).toBe(1);
       expect(await DB.table('users').count()).toBe(0);
     });
+
+    it('preserves builder state and supports concurrent first(), pluck(), and exists() via clone()', async () => {
+      await DB.table('users').insert([
+        { id: 21, name: 'Alice Alpha', role: 'admin' },
+        { id: 22, name: 'Bob Beta', role: 'admin' },
+        { id: 23, name: 'Charlie Gamma', role: 'user' },
+      ]);
+
+      const baseQuery = DB.table('users').where('role', 'admin');
+
+      // Test clone explicitly
+      const cloned = baseQuery.clone().where('name', 'Alice Alpha');
+      expect(await cloned.count()).toBe(1);
+      expect(await baseQuery.count()).toBe(2); // Original unmodified
+
+      // Test concurrent executions without state corruption
+      const [firstRec, doesExist, pluckedNames, allRows] = await Promise.all([
+        baseQuery.first(),
+        baseQuery.exists(),
+        baseQuery.pluck('name'),
+        baseQuery.get(),
+      ]);
+
+      expect(firstRec).toBeDefined();
+      expect(doesExist).toBe(true);
+      expect(pluckedNames).toEqual(['Alice Alpha', 'Bob Beta']);
+      expect(allRows).toHaveLength(2);
+
+      // Verify baseQuery did not permanently mutate columns or limit
+      const { sql } = baseQuery.toSQL();
+      expect(sql).toContain('SELECT * FROM users');
+      expect(sql).not.toContain('LIMIT 1');
+
+      // Clean up
+      await DB.table('users').whereIn('id', [21, 22, 23]).delete();
+    });
   });
 
   describe('Active Record Model (Eloquent / Lucid style)', () => {

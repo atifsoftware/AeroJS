@@ -76,6 +76,28 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   }
 
   /**
+   * Creates an isolated clone of the current QueryBuilder instance,
+   * preventing state mutations across concurrent async operations.
+   */
+  public clone(): QueryBuilder<T> {
+    const copy = new QueryBuilder<T>(this.tableName, this.adapter);
+    copy.columns = [...this.columns];
+    copy.whereClauses = [...this.whereClauses];
+    copy.joinClauses = [...this.joinClauses];
+    copy.orderClauses = [...this.orderClauses];
+    copy.limitCount = this.limitCount;
+    copy.offsetCount = this.offsetCount;
+    copy.isDistinct = this.isDistinct;
+    copy.groupClauses = [...this.groupClauses];
+    copy.havingClauses = [...this.havingClauses];
+    copy._eagerLoads = [...this._eagerLoads];
+    copy.preferWriteConnection = this.preferWriteConnection;
+    copy.customReadAdapter = this.customReadAdapter;
+    copy.lockMode = this.lockMode;
+    return copy;
+  }
+
+  /**
    * Resolves the appropriate adapter for read queries.
    */
   public resolveReadAdapter(): DatabaseAdapter {
@@ -343,6 +365,17 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       sql += ` OFFSET ${this.offsetCount}`;
     }
 
+    // Pessimistic Locking
+    if (this.lockMode) {
+      const adapter = this.resolveReadAdapter();
+      const dialect = String(adapter.dialect || '').toLowerCase();
+      if (this.lockMode === 'FOR UPDATE') {
+        sql += ' FOR UPDATE';
+      } else if (this.lockMode === 'SHARE') {
+        sql += dialect.includes('mysql') ? ' LOCK IN SHARE MODE' : ' FOR SHARE';
+      }
+    }
+
     return { sql, bindings };
   }
 
@@ -362,10 +395,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Executes query and returns first record, or null.
    */
   public async first(): Promise<T | null> {
-    const prevLimit = this.limitCount;
-    this.limitCount = 1;
-    const rows = await this.get();
-    this.limitCount = prevLimit;
+    const qb = this.clone();
+    qb.limitCount = 1;
+    const rows = await qb.get();
     return rows[0] || null;
   }
 
@@ -484,10 +516,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Checks if any matching records exist.
    */
   public async exists(): Promise<boolean> {
-    const prevLimit = this.limitCount;
-    this.limitCount = 1;
-    const rows = await this.get();
-    this.limitCount = prevLimit;
+    const qb = this.clone();
+    qb.limitCount = 1;
+    const rows = await qb.get();
     return rows.length > 0;
   }
 
@@ -495,10 +526,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Plucks an array of single column values from matching records.
    */
   public async pluck<K extends keyof T>(column: K): Promise<T[K][]> {
-    const prevColumns = this.columns;
-    this.columns = [String(column)];
-    const rows = await this.get();
-    this.columns = prevColumns;
+    const qb = this.clone();
+    qb.columns = [String(column)];
+    const rows = await qb.get();
     return rows.map((r: any) => r[column]);
   }
 
@@ -604,8 +634,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     const lastPage = Math.max(1, Math.ceil(total / perPage));
     const offset = (page - 1) * perPage;
 
-    this.limit(perPage).offset(offset);
-    const data = await this.get();
+    const qb = this.clone();
+    qb.limit(perPage).offset(offset);
+    const data = await qb.get();
 
     return {
       data,

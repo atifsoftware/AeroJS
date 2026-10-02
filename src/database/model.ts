@@ -303,7 +303,8 @@ export class Model {
         }
       }
     }
-    const inst = new (this as any)(decryptedRow);
+    const inst = new (this as any)();
+    inst._attributes = { ...decryptedRow };
     inst._exists = true;
     inst._original = { ...decryptedRow };
     inst._dirty = {};
@@ -364,6 +365,12 @@ export class Model {
       },
       set(target: any, prop: string | symbol, value: any, receiver: any) {
         if (typeof prop === 'symbol') return Reflect.set(target, prop, value, receiver);
+
+        // Internal model state fields (_attributes, _exists, _original, _dirty, _relations)
+        if (typeof prop === 'string' && prop.startsWith('_')) {
+          target[prop] = value;
+          return true;
+        }
 
         const protoDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), prop);
         if (protoDesc && protoDesc.set && !(target._attributes && String(prop) in target._attributes)) {
@@ -732,17 +739,20 @@ export class Model {
 
     qb.first = async (): Promise<Model | null> => {
       const prevLimit = qb.limitCount;
-      qb.limitCount = 1;
-      const rows = await qb.get();
-      qb.limitCount = prevLimit;
-      const inst = rows[0] || null;
+      try {
+        qb.limitCount = 1;
+        const rows = await qb.get();
+        const inst = rows[0] || null;
 
-      if (inst) {
-        const registry = getHookRegistry(ModelClass);
-        await registry.execute('afterFind', inst);
+        if (inst) {
+          const registry = getHookRegistry(ModelClass);
+          await registry.execute('afterFind', inst);
+        }
+
+        return inst;
+      } finally {
+        qb.limitCount = prevLimit;
       }
-
-      return inst;
     };
 
     qb.firstOrFail = async (): Promise<Model> => {

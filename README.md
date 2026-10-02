@@ -940,71 +940,144 @@ app.listen(3000);
 
 ---
 
-### 22. Active Record ORM & QueryBuilder (`Model`, `DB`, `Migrator`)
+### 22. Active Record ORM, QueryBuilder & Dialects (`Model`, `DB`, `Schema`, `useSqlite`)
 
-Eloquent and Lucid inspired Active Record ORM with Proxy auto-wiring, relationships, and schema migrations:
+AeroJS ships with a batteries-included, zero-lock-in database tier supporting **MySQL**, **PostgreSQL**, and **SQLite** (Node.js 24 zero-dependency `node:sqlite`).
 
+```text
+┌────────────────────────────────────────────────────────┐
+│                   AeroJS Database Tier                 │
+├──────────────────────────┬─────────────────────────────┤
+│ Tier 1: Batteries-Included│ Tier 2: Zero Lock-In        │
+│ Native ORM & QueryBuilder│ External ORM Bridges        │
+│ ├─ Active Record Model   │ ├─ Drizzle ORM              │
+│ ├─ Fluent QueryBuilder   │ ├─ Prisma Client            │
+│ ├─ Schema Migrations     │ └─ Knex.js                  │
+│ └─ Native SQLite / PG / MySQL                          │
+└──────────────────────────┴─────────────────────────────┘
+```
+
+#### 22.1 Defining Active Record Models & Relationships
 ```typescript
-import { Model, DB, Schema, Migrator } from 'aero';
+import { Model } from 'aerojs';
 
-// 1. Define Model with Relationships
-class User extends Model {
+export class User extends Model {
   public static override table = 'users';
+  public static override primaryKey = 'id';
+  public static override fillable = ['name', 'email', 'role'];
   public static override hidden = ['password'];
   public static override softDeletes = true;
 
   public posts() {
     return this.hasMany(Post, 'user_id', 'id');
   }
+
+  public profile() {
+    return this.hasOne(Profile, 'user_id', 'id');
+  }
 }
 
-class Post extends Model {
+export class Post extends Model {
   public static override table = 'posts';
+
+  public user() {
+    return this.belongsTo(User, 'user_id', 'id');
+  }
 }
+```
 
-// 2. Active Record Operations & Mutation via Proxy
-const user = await User.create({ name: 'Alice', email: 'alice@aero.org' });
+#### 22.2 Active Record Persistence & Dirty Tracking
+```typescript
+// Create
+const user = await User.create({ name: 'Alice', email: 'alice@aerojs.dev' });
+
+// Mutate via Proxied getters/setters & Dirty Tracking
 user.name = 'Alice Smith';
-await user.save();
+await user.save(); // Only updates modified 'name' column
 
-// 3. Eager Loading (Solves N+1 Query Problem)
-const usersWithPosts = await User.query().with('posts').get();
+// Eager Loading (Eliminates N+1 queries)
+const usersWithPosts = await User.with('posts', 'profile').get();
 
-// 4. Fluent QueryBuilder
-const admins = await DB.table('users')
-  .where('role', 'admin')
-  .orderBy('id', 'DESC')
-  .paginate(1, 15);
+// Soft Deletes
+await user.delete();   // Sets deleted_at = NOW()
+await user.restore();  // Clears deleted_at
+```
+
+#### 22.3 Fluent QueryBuilder (`DB.table(...)`)
+```typescript
+import { DB } from 'aerojs';
+
+// Conditionals, Joins & Pagination
+const results = await DB.table('orders')
+  .select('orders.*', 'users.name as customer_name')
+  .join('users', 'orders.user_id', 'users.id')
+  .where('orders.status', '=', 'completed')
+  .whereIn('orders.currency', ['USD', 'EUR'])
+  .orderBy('orders.created_at', 'DESC')
+  .paginate(1, 15); // Returns { data, total, page, perPage, lastPage }
+
+// Pessimistic Locking
+const order = await DB.table('orders')
+  .where('id', 1)
+  .forUpdate()
+  .first();
+
+// Atomic Transactions & Savepoints
+await DB.transaction(async (trx) => {
+  await trx.table('accounts').where('id', 1).decrement('balance', 100);
+  await trx.table('accounts').where('id', 2).increment('balance', 100);
+});
+```
+
+#### 22.4 Native Zero-Dependency SQLite Adapter
+```typescript
+import { Aero, useSqlite } from 'aerojs';
+
+const app = new Aero();
+
+// Out-of-the-box in-memory or persistent SQLite without native compilation:
+app.useSqlite('storage/database.sqlite');
+
+app.get('/items', async (ctx) => {
+  const items = await ctx.sqlite.query('SELECT * FROM items WHERE is_active = ?', [1]);
+  ctx.status(200).json(items);
+});
 ```
 
 ---
 
-### 23. Knex, Prisma & Drizzle ORM Integrations
+### 23. Zero Lock-In External Integrations (Drizzle, Prisma & Knex)
 
-First-class adapters allowing developers to choose any database query engine while enjoying full Aero integration:
+AeroJS gives you complete freedom. You can leverage AeroJS's ultra-fast HTTP routing, middleware pipeline, authentication, websockets, job queues, and error dashboard while bringing your favorite database library:
 
 ```typescript
-import Aero from 'aero';
+import { Aero } from 'aerojs';
 import knex from 'knex';
 import { PrismaClient } from '@prisma/client';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
 const app = new Aero();
 
-// 1. Knex Integration
+// 1. Pluggable Knex.js
 app.useKnex(knex({ client: 'pg', connection: process.env.DATABASE_URL }));
 
-// 2. Prisma Integration
+// 2. Pluggable Prisma Client
 app.usePrisma(new PrismaClient());
 
-// 3. Drizzle Integration
+// 3. Pluggable Drizzle ORM
 app.useDrizzle(drizzle(process.env.DATABASE_URL));
 
-app.get('/users', async (ctx) => {
-  // Access via context
-  const usersKnex = await ctx.knex('users').where('active', true);
-  const usersPrisma = await ctx.prisma.user.findMany();
-  const usersDrizzle = await ctx.drizzle.select().from(...);
+app.get('/dashboard', async (ctx) => {
+  // Direct injection into request context with full TypeScript inference:
+  const activeOrders = await ctx.knex('orders').where({ status: 'pending' });
+  const usersPrisma  = await ctx.prisma.user.findMany({ where: { active: true } });
+  const drizzlePosts = await ctx.drizzle.select().from(postsTable);
+
+  // Or strongly-typed generics:
+  const customPrisma = ctx.getPrisma<PrismaClient>();
+  const customDrizzle = ctx.getDrizzle<typeof drizzleDb>();
+
+  ctx.status(200).json({ activeOrders, usersPrisma, drizzlePosts });
 });
 ```
 

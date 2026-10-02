@@ -135,5 +135,6 @@ export function useKnex(knexInstance: any, connectionName = 'default'): KnexData
   Database.setAdapter(adapter, connectionName);
   (Database as any).knex = knexInstance;
   (DB as any).knex = knexInstance;
+  (globalThis as any).__AERO_KNEX__ = knexInstance;
   return adapter;
 }
