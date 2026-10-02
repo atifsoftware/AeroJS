@@ -12,7 +12,9 @@ describe('CLI Multi-Template Scaffolding', () => {
   });
 
   afterAll(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
   });
 
   it('fails if an invalid template is provided', () => {
@@ -32,7 +34,6 @@ describe('CLI Multi-Template Scaffolding', () => {
   });
 
   it('scaffolds api-starter template', () => {
-    // Navigate to tmpDir so process.cwd() resolves there
     const originalCwd = process.cwd();
     process.chdir(tmpDir);
 
@@ -73,20 +74,24 @@ describe('CLI Multi-Template Scaffolding', () => {
     process.chdir(originalCwd);
   });
 
-  it('scaffolds hospital-erp template', () => {
+  it('scaffolds fullstack template matching my-aero-app', () => {
     const originalCwd = process.cwd();
     process.chdir(tmpDir);
 
-    const projName = 'my-hospital';
-    createNewProject(projName, 'hospital-erp');
+    const projName = 'my-fullstack';
+    createNewProject(projName, 'fullstack');
 
     const projPath = path.join(tmpDir, projName);
-    expect(fs.existsSync(path.join(projPath, 'app/models/Patient.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(projPath, 'app/models/MedicalRecord.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(projPath, 'database/seeders/HospitalSeeder.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'package.json'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'server.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'app/views/engine.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'views/index.edge'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'resources/js/app.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(projPath, 'AGENTS.md'))).toBe(true);
 
-    const serverCode = fs.readFileSync(path.join(projPath, 'server.ts'), 'utf8');
-    expect(serverCode).toContain("app.ws.channel('departments:emergency', () => true);");
+    const pkg = JSON.parse(fs.readFileSync(path.join(projPath, 'package.json'), 'utf8'));
+    expect(pkg.dependencies['edge.js']).toBeDefined();
+    expect(pkg.dependencies['knex']).toBeDefined();
 
     process.chdir(originalCwd);
   });

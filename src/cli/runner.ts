@@ -37,10 +37,10 @@ export class AeroCLI {
             return 1;
           }
 
-          let template = 'api-starter';
+          let template = 'fullstack';
           const templateArg = argv.find(a => a.startsWith('--template=') || a.startsWith('-t='));
           if (templateArg) {
-            template = templateArg.split('=')[1] || 'api-starter';
+            template = templateArg.split('=')[1] || 'fullstack';
           }
 
           createNewProject(projectName, template);
