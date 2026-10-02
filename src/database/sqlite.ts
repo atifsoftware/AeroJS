@@ -11,17 +11,42 @@ import { Logger } from '../logging/logger.js';
 
 const req = createRequire(import.meta.url);
 
+/**
+ * Checks whether native SQLite (node:sqlite) is supported by the current Node.js runtime.
+ * Native zero-dependency SQLite was introduced in Node.js v22.5.0.
+ */
+export function isSqliteSupported(): boolean {
+  try {
+    const mod = req('node:sqlite');
+    return typeof mod?.DatabaseSync === 'function';
+  } catch {
+    return false;
+  }
+}
+
 export class SqliteDatabaseAdapter implements DatabaseAdapter {
   public readonly dialect = 'sqlite3';
   public readonly db: any;
 
   constructor(locationOrDb: string | any = ':memory:') {
     if (typeof locationOrDb === 'string') {
+      if (!isSqliteSupported()) {
+        throw new Error(
+          `[AeroJS] Native SQLite requires Node.js >= 22.5.0 with built-in 'node:sqlite'. ` +
+          `Current runtime: Node.js ${process.version}. For Node.js < 22, please use Knex with 'better-sqlite3' via useKnex().`
+        );
+      }
       const { DatabaseSync } = req('node:sqlite');
       this.db = new DatabaseSync(locationOrDb);
     } else if (locationOrDb && typeof locationOrDb === 'object') {
       this.db = locationOrDb;
     } else {
+      if (!isSqliteSupported()) {
+        throw new Error(
+          `[AeroJS] Native SQLite requires Node.js >= 22.5.0 with built-in 'node:sqlite'. ` +
+          `Current runtime: Node.js ${process.version}. For Node.js < 22, please use Knex with 'better-sqlite3' via useKnex().`
+        );
+      }
       const { DatabaseSync } = req('node:sqlite');
       this.db = new DatabaseSync(':memory:');
     }

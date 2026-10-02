@@ -9,6 +9,7 @@ import {
   KnexDatabaseAdapter,
   useSqlite,
   useKnex,
+  isSqliteSupported,
   beforeCreate,
   afterCreate,
   beforeSave,
@@ -84,7 +85,7 @@ class Profile extends Model {
 // DATABASE ENGINE 1: SQLite (Native node:sqlite in-memory execution)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Database Engine 1: SQLite (Native Driver & Protocol)', () => {
+describe.runIf(isSqliteSupported())('Database Engine 1: SQLite (Native Driver & Protocol)', () => {
   let sqliteAdapter: SqliteDatabaseAdapter;
 
   beforeEach(async () => {

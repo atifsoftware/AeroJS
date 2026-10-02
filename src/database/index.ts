@@ -86,5 +86,6 @@ export {
 export {
   SqliteDatabaseAdapter,
   useSqlite,
+  isSqliteSupported,
 } from './sqlite.js';
 

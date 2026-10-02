@@ -93,6 +93,7 @@ export {
   MemoryDatabaseAdapter,
   SqliteDatabaseAdapter,
   useSqlite,
+  isSqliteSupported,
   Model,
   Relation,
   computed,

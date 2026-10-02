@@ -6,6 +6,7 @@ import {
   usePrisma,
   useDrizzle,
   AeroCLI,
+  isSqliteSupported,
 } from '../src/index.js';
 import { createTestClient } from '../src/testing/test-client.js';
 
@@ -78,7 +79,7 @@ describe('AeroJS CLI & ORM Integrations (Drizzle & Prisma)', () => {
       expect(res.json()[0].title).toBe('Drizzle Post');
     });
 
-    it('integrates native SQLite and exposes ctx.sqlite', async () => {
+    it.runIf(isSqliteSupported())('integrates native SQLite and exposes ctx.sqlite', async () => {
       const app = new Aero();
       app.useSqlite(':memory:');
 
