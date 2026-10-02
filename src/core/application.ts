@@ -20,6 +20,8 @@ import { securityHeaders, type SecurityHeadersOptions } from '../security/header
 import { graphqlPlugin, type GraphQLPluginOptions } from '../graphql/plugin.js';
 import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagnostics-plugin.js';
 import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
+import { TcpServer, type TcpServerOptions } from '../tcp/tcp-server.js';
+
 
 
 export { ApplicationCore, type HookMap, type HookName } from './application-core.js';
@@ -172,6 +174,32 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
 
     return this;
   }
+
+  /**
+   * Configures OpenAPI 3.1 specification endpoint and interactive Swagger UI.
+   */
+  public useOpenApi(options: {
+    title?: string;
+    version?: string;
+    description?: string;
+    route?: string;
+    specRoute?: string;
+    servers?: Array<{ url: string; description?: string }>;
+    security?: boolean | Record<string, any>;
+  } = {}): this {
+    const uiRoute = options.route || '/api-docs';
+    const specRoute = options.specRoute || '/api-spec.json';
+    return this.useSwagger({ ...options, openapiVersion: '3.1.0', route: uiRoute, specRoute } as any);
+  }
+
+
+  /**
+   * Initializes a raw TCP server gateway for hardware/protocol listeners.
+   */
+  public tcp(options: TcpServerOptions): TcpServer {
+    return new TcpServer(options);
+  }
+
 
   /**
    * Configures Prisma Client as an ORM in Aero, binding it to IoC container and ctx.prisma.

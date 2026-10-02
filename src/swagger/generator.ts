@@ -26,6 +26,7 @@ export interface SwaggerOptions {
   title?: string;
   version?: string;
   description?: string;
+  openapiVersion?: string;
   route?: string; // Swagger UI endpoint, default '/docs'
   specRoute?: string; // OpenAPI JSON endpoint, default '/openapi.json'
   servers?: Array<{ url: string; description?: string }>;
@@ -35,7 +36,8 @@ export interface SwaggerOptions {
 export class SwaggerGenerator {
   public static generate(routes: Route[], options: SwaggerOptions = {}): OpenAPISpec {
     const spec: OpenAPISpec = {
-      openapi: '3.0.3',
+      openapi: options.openapiVersion || '3.0.3',
+
       info: {
         title: options.title || 'AeroJS Application API',
         version: options.version || '1.0.0',
@@ -59,7 +61,7 @@ export class SwaggerGenerator {
 
     for (const route of routes) {
       // Don't document Swagger UI / internal docs routes
-      if (route.path.startsWith('/docs') || route.path.startsWith('/openapi.json') || route.path.startsWith('/swagger')) {
+      if (route.path.startsWith('/docs') || route.path.startsWith('/openapi.json') || route.path.startsWith('/api-spec.json') || route.path.startsWith('/api-docs') || route.path.startsWith('/swagger')) {
         continue;
       }
 
@@ -76,10 +78,14 @@ export class SwaggerGenerator {
       // Determine Tag
       const segments = route.path.split('/').filter(Boolean);
       const tagCandidate = segments[0] === 'api' ? segments[1] : segments[0];
-      const tag = tagCandidate
+      const defaultTag = tagCandidate
         ? tagCandidate.charAt(0).toUpperCase() + tagCandidate.slice(1)
         : 'General';
-      tagsSet.add(tag);
+
+      // Extract Route OpenAPI Metadata
+      const openapiMeta = (route as any).openapi || {};
+      const tags = openapiMeta.tags || [defaultTag];
+      for (const t of tags) tagsSet.add(t);
 
       // Extract Path Parameters
       const parameters: any[] = [];
@@ -134,15 +140,20 @@ export class SwaggerGenerator {
         responses['422'] = { description: 'Unprocessable Entity' };
       }
 
+      const mergedResponses = { ...responses, ...(openapiMeta.responses || {}) };
+
       spec.paths[openApiPath]![method] = {
-        tags: [tag],
-        summary: `${route.method} ${route.path}`,
+        tags,
+        summary: openapiMeta.summary || `${route.method} ${route.path}`,
+        description: openapiMeta.description,
+        deprecated: openapiMeta.deprecated,
         parameters: parameters.length > 0 ? parameters : undefined,
         requestBody,
-        responses,
+        responses: mergedResponses,
         security: options.security ? [{ bearerAuth: [] }] : undefined,
       };
     }
+
 
     spec.tags = Array.from(tagsSet).map((name) => ({ name }));
     return spec;

@@ -65,6 +65,15 @@ export class RouteBuilder<State = DefaultState> {
   }
 
   /**
+   * Attaches OpenAPI 3.1 metadata to this route.
+   */
+  public openapi(meta: Record<string, any>): this {
+    (this.route as any).openapi = meta;
+    return this;
+  }
+
+
+  /**
    * Returns the underlying Route object.
    */
   public getRoute(): Route<State> {
