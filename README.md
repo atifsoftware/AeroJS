@@ -62,6 +62,9 @@
   32. [Distributed Redis Rate Limiter (`RedisRateLimitStore`)](#32-distributed-redis-rate-limiter-redisratelimitstore)
   33. [Redis Queue Driver with DLQ (`RedisQueueDriver`)](#33-redis-queue-driver-with-dlq-redisqueuedriver)
   34. [Fluent HTTP Client (`Http`, `HttpResponse`)](#34-fluent-http-client-http-httpresponse)
+  35. [OAuth 2.0 & Social Login (`OAuth`, Google, GitHub)](#35-oauth-20--social-login-oauth-google-github)
+  36. [Multi-Channel Notifications (`Notification`, `Notifications`)](#36-multi-channel-notifications-notification-notifications)
+  37. [Tamper-Proof Signed URLs (`UrlSigner`, `validateSignedUrl`)](#37-tamper-proof-signed-urls-urlsigner-validatesignedurl)
 - [Performance, Size & Advantages](#-performance-size--advantages)
 - [Comparison Matrix](#-comparison-matrix)
 - [License](#-license)
@@ -1325,6 +1328,113 @@ const res = await Http.post('https://api.hospital-network.com/v1/billing', { amo
 expect(res.status).toBe(201);
 
 Http.assertSent((req) => req.url.includes('/billing') && req.method === 'POST');
+```
+
+---
+
+### 35. OAuth 2.0 & Social Login (`OAuth`, Google, GitHub)
+
+Authenticate users with Google, GitHub, or custom OAuth 2.0 identity providers without external libraries.
+
+```typescript
+import { OAuth, router } from '@shohaghinfo/aerojs';
+
+// 1. Configure Providers
+OAuth.configure({
+  providers: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      redirectUri: 'https://myapp.com/auth/google/callback',
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      redirectUri: 'https://myapp.com/auth/github/callback',
+    },
+  },
+});
+
+// 2. Redirect to Provider
+router.get('/auth/google', (ctx) => {
+  ctx.redirect(OAuth.driver('google').getRedirectUrl());
+});
+
+// 3. Handle Callback
+router.get('/auth/google/callback', async (ctx) => {
+  const code = ctx.query.code as string;
+  const { user, accessToken } = await OAuth.driver('google').handleCallback(code);
+
+  console.log('Logged in user:', user.name, user.email, user.avatarUrl);
+  ctx.json({ success: true, user });
+});
+```
+
+---
+
+### 36. Multi-Channel Notifications (`Notification`, `Notifications`)
+
+Deliver notifications simultaneously across multiple delivery channels (Email, Database, Realtime Broadcast, SMS) with unified syntax.
+
+```typescript
+import { Notification, Notifications, MailMessage } from '@shohaghinfo/aerojs';
+
+class OrderShippedNotification extends Notification {
+  constructor(public order: any) {
+    super();
+  }
+
+  // Choose delivery channels
+  public via(user: any): string[] {
+    return ['mail', 'database', 'broadcast'];
+  }
+
+  public toMail(user: any): MailMessage {
+    const msg = new MailMessage();
+    return msg.subject(`Order #${this.order.id} Shipped`)
+              .html(`<h1>Your package is on its way!</h1>`);
+  }
+
+  public toDatabase(user: any) {
+    return { orderId: this.order.id, trackingNumber: 'TRK-98124' };
+  }
+
+  public toBroadcast(user: any) {
+    return {
+      channel: `user.${user.id}`,
+      event: 'OrderShipped',
+      data: { orderId: this.order.id },
+    };
+  }
+}
+
+// Dispatch to single user or array of users
+await Notifications.send(customer, new OrderShippedNotification(order));
+```
+
+---
+
+### 37. Tamper-Proof Signed URLs (`UrlSigner`, `validateSignedUrl`)
+
+Generate time-limited, cryptographically verified URLs for private downloads, password resets, or webhooks.
+
+```typescript
+import { UrlSigner, validateSignedUrl, Storage, router } from '@shohaghinfo/aerojs';
+
+// 1. Generate 15-minute temporary download link
+const downloadUrl = await Storage.temporaryUrl('invoices/inv-2026.pdf', 900);
+// Returns: /storage/invoices/inv-2026.pdf?expires=1790924000&signature=8f9a2...
+
+// 2. Protect route with middleware
+router.get('/secure/download', validateSignedUrl(), async (ctx) => {
+  ctx.json({ data: 'Confidential file contents' });
+});
+
+// 3. Or verify inline inside controller:
+if (!ctx.hasValidSignature()) {
+  ctx.status(403).json({ error: 'Signature invalid or expired' });
+  return;
+}
 ```
 
 ---

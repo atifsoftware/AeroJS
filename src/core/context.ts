@@ -10,6 +10,7 @@ import { AeroResponse } from './response.js';
 import type { CookieOptions, ParsedQuery, RouteParams } from './types.js';
 import { parseCookies } from './utils.js';
 import { SseStream, type SseOptions } from '../sse/sse.js';
+import { UrlSigner } from '../security/signed-url.js';
 
 import {
   AeroError,
@@ -372,5 +373,13 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
     }
 
     return validator.validated() as T;
+  }
+
+  /**
+   * Verifies if the incoming request has a valid, non-expired URL signature.
+   */
+  public hasValidSignature(key?: string): boolean {
+    const fullUrl = this.req.url || '/';
+    return UrlSigner.hasValidSignature(fullUrl, key);
   }
 }

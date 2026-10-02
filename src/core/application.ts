@@ -19,6 +19,7 @@ import { rateLimit, type RateLimitOptions } from '../security/rate-limiter.js';
 import { securityHeaders, type SecurityHeadersOptions } from '../security/headers.js';
 import { graphqlPlugin, type GraphQLPluginOptions } from '../graphql/plugin.js';
 import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagnostics-plugin.js';
+import { HealthCheck, type HealthCheckFunction } from '../diagnostics/health-check.js';
 import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
 import { TcpServer, type TcpServerOptions } from '../tcp/tcp-server.js';
 
@@ -76,6 +77,18 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
    */
   public useDiagnostics(options?: DiagnosticsOptions): this {
     return this.register(diagnosticsPlugin(options)) as this;
+  }
+
+  /**
+   * Registers health check callbacks and activates the diagnostic endpoints (/health, /metrics).
+   */
+  public useHealthCheck(checks?: Record<string, HealthCheckFunction>, options?: DiagnosticsOptions): this {
+    if (checks) {
+      for (const [name, fn] of Object.entries(checks)) {
+        HealthCheck.register(name, fn);
+      }
+    }
+    return this.useDiagnostics(options);
   }
 
   /**

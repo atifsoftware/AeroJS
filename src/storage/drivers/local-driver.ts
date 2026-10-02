@@ -6,6 +6,7 @@
 
 import { readFile, writeFile, unlink, stat, mkdir } from 'node:fs/promises';
 import { resolve, dirname, normalize } from 'node:path';
+import { UrlSigner } from '../../security/signed-url.js';
 import type { StorageDriver } from './storage-driver.js';
 
 export interface LocalStorageOptions {
@@ -75,6 +76,11 @@ export class LocalStorageDriver implements StorageDriver {
   public url(path: string): string {
     const rel = this.normalizeRelative(path);
     return `${this.baseUrl}/${rel}`.replace(/\/+/g, '/');
+  }
+
+  public async temporaryUrl(path: string, expiresInSeconds = 3600): Promise<string> {
+    const rawUrl = this.url(path);
+    return UrlSigner.sign(rawUrl, { expiresIn: expiresInSeconds });
   }
 
   public resolveSafePath(path: string): string {

@@ -5,6 +5,7 @@
  */
 
 import type { StorageDriver } from './storage-driver.js';
+import { UrlSigner } from '../../security/signed-url.js';
 
 export class MemoryStorageDriver implements StorageDriver {
   private files = new Map<string, Buffer>();
@@ -56,6 +57,11 @@ export class MemoryStorageDriver implements StorageDriver {
   public url(path: string): string {
     const norm = this.normalize(path);
     return `${this.baseUrl}/${norm}`.replace(/\/+/g, '/');
+  }
+
+  public async temporaryUrl(path: string, expiresInSeconds = 3600): Promise<string> {
+    const rawUrl = this.url(path);
+    return UrlSigner.sign(rawUrl, { expiresIn: expiresInSeconds });
   }
 
   public clear(): void {

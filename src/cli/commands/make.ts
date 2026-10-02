@@ -177,3 +177,142 @@ export default ${cleanName.toLowerCase()}Middleware;
   writeFileSync(filePath, content, 'utf-8');
   return filePath;
 }
+
+export function makeJob(name: string, targetDir = 'app/jobs'): string {
+  const cleanName = name.replace(/Job$/i, '');
+  const className = `${cleanName}Job`;
+  const fileName = `${className}.ts`;
+  const filePath = join(process.cwd(), targetDir, fileName);
+
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  const content = `import { Job } from 'aerojs';
+
+export class ${className} extends Job {
+  public static override queue = 'default';
+  public static override maxTries = 3;
+
+  constructor(data: Record<string, any> = {}) {
+    super(data);
+  }
+
+  public async handle(): Promise<void> {
+    // Background task business logic
+    console.log('Processing ${className}:', this.data);
+  }
+
+  public async failed(error: Error): Promise<void> {
+    console.error('${className} failed permanently:', error.message);
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+export function makeMail(name: string, targetDir = 'app/mail'): string {
+  const cleanName = name.replace(/Mail$/i, '');
+  const className = `${cleanName}Mail`;
+  const fileName = `${className}.ts`;
+  const filePath = join(process.cwd(), targetDir, fileName);
+
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  const content = `import { MailMessage } from 'aerojs';
+
+export class ${className} {
+  constructor(public data: Record<string, any> = {}) {}
+
+  public build(msg: MailMessage): void {
+    msg.subject('${cleanName} Notification')
+       .text('Hello from ${className}')
+       .html('<h1>Hello</h1><p>This is a notification from <strong>${className}</strong>.</p>');
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+export function makePolicy(name: string, targetDir = 'app/policies'): string {
+  const cleanName = name.replace(/Policy$/i, '');
+  const className = `${cleanName}Policy`;
+  const fileName = `${className}.ts`;
+  const filePath = join(process.cwd(), targetDir, fileName);
+
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  const content = `export class ${className} {
+  public view(user: any, resource?: any): boolean {
+    return true;
+  }
+
+  public create(user: any): boolean {
+    return user.role === 'admin' || user.role === 'doctor';
+  }
+
+  public update(user: any, resource: any): boolean {
+    return user.id === resource.userId || user.role === 'admin';
+  }
+
+  public delete(user: any, resource: any): boolean {
+    return user.role === 'admin';
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+export function makeEvent(name: string, targetDir = 'app/events'): string {
+  const cleanName = name.replace(/Event$/i, '');
+  const className = `${cleanName}Event`;
+  const fileName = `${className}.ts`;
+  const filePath = join(process.cwd(), targetDir, fileName);
+
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  const content = `import { DomainEvent } from 'aerojs';
+
+export class ${className} extends DomainEvent {
+  constructor(public payload: Record<string, any> = {}) {
+    super();
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}
+
+export function makeListener(name: string, targetDir = 'app/listeners'): string {
+  const cleanName = name.replace(/Listener$/i, '');
+  const className = `${cleanName}Listener`;
+  const fileName = `${className}.ts`;
+  const filePath = join(process.cwd(), targetDir, fileName);
+
+  mkdirSync(dirname(filePath), { recursive: true });
+
+  const content = `export class ${className} {
+  public async handle(event: any): Promise<void> {
+    console.log('Handled event in ${className}:', event);
+  }
+}
+
+export default ${className};
+`;
+
+  writeFileSync(filePath, content, 'utf-8');
+  return filePath;
+}

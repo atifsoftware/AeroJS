@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
-import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder } from './commands/make.js';
+import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder, makeJob, makeMail, makePolicy, makeEvent, makeListener } from './commands/make.js';
 import { initProject } from './commands/init.js';
 import { createNewProject } from './commands/new.js';
 import { encryptEnv, decryptEnv } from './commands/vault.js';
@@ -162,7 +162,62 @@ export class AeroCLI {
           return 0;
         }
 
-                case 'env:encrypt': {
+        case 'make:job': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a job name. Example: aero make:job ProcessPayment');
+            return 1;
+          }
+          const file = makeJob(name);
+          console.log(`[CREATED] Job: ${file}`);
+          return 0;
+        }
+
+        case 'make:mail': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a mail name. Example: aero make:mail WelcomeEmail');
+            return 1;
+          }
+          const file = makeMail(name);
+          console.log(`[CREATED] Mail: ${file}`);
+          return 0;
+        }
+
+        case 'make:policy': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a policy name. Example: aero make:policy UserPolicy');
+            return 1;
+          }
+          const file = makePolicy(name);
+          console.log(`[CREATED] Policy: ${file}`);
+          return 0;
+        }
+
+        case 'make:event': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide an event name. Example: aero make:event OrderPlaced');
+            return 1;
+          }
+          const file = makeEvent(name);
+          console.log(`[CREATED] Event: ${file}`);
+          return 0;
+        }
+
+        case 'make:listener': {
+          const name = argv[1];
+          if (!name) {
+            console.error('Error: Please provide a listener name. Example: aero make:listener SendOrderNotification');
+            return 1;
+          }
+          const file = makeListener(name);
+          console.log(`[CREATED] Listener: ${file}`);
+          return 0;
+        }
+
+        case 'env:encrypt': {
           encryptEnv();
           return 0;
         }
@@ -229,6 +284,11 @@ Available Commands:
   make:migration <name>      Create a new timestamped schema migration file
   make:middleware <name>     Create a new request middleware
   make:seeder <name>         Create a new database seeder
+  make:job <name>            Create a new background queue job class
+  make:mail <name>           Create a new email class
+  make:policy <name>         Create a new Bouncer access policy class
+  make:event <name>          Create a new domain event class
+  make:listener <name>       Create a new event listener class
 
   env:encrypt                Encrypt .env file into a secure .env.vault
   env:decrypt                Decrypt .env.vault to verify contents using AERO_KEY
