@@ -388,20 +388,25 @@ export {
   type TaskRunRecord,
 } from './scheduler/scheduler.js';
 
-// Universal Multi-Store Cache System
 export * from './cache/index.js';
 
-// Native Zero-Dependency Redis Client
 export * from './redis/index.js';
 
-// Real-Time WebSocket Hub, Channels & Clustering
 export * from './ws/index.js';
-
-// Enterprise Health Checks & Prometheus Metrics
 export * from './diagnostics/index.js';
-
-// Advanced Security Suite (TOTP, Vault, Encrypted Cookies)
 export * from './security/index.js';
-
-// Zero-Dependency GraphQL Engine & Model Adapter
 export * from './graphql/index.js';
+
+export * from './di/decorators.js';
+export * from './auth/index.js';
+export * from './tenancy/index.js';
+
+export * from './sse/index.js';
+export * from './pdf/index.js';
+export * from './i18n/index.js';
+export * from './config/env-schema.js';
+
+export * from './tcp/index.js';
+export * from './webhook/index.js';
+
+

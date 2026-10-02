@@ -5,8 +5,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { initProject } from './init.js';
 
-export const AVAILABLE_TEMPLATES = ['api-starter', 'react-inertia', 'vue-inertia', 'hospital-erp'];
+export const AVAILABLE_TEMPLATES = ['fullstack', 'api-starter', 'react-inertia', 'vue-inertia'];
 
 export function createNewProject(projectName: string, template: string) {
   if (!AVAILABLE_TEMPLATES.includes(template)) {
@@ -19,6 +20,17 @@ export function createNewProject(projectName: string, template: string) {
   if (fs.existsSync(targetDir)) {
     console.error(`Error: Directory '${projectName}' already exists.`);
     process.exit(1);
+  }
+
+  if (template === 'fullstack') {
+    fs.mkdirSync(targetDir, { recursive: true });
+    initProject(projectName, { name: projectName, template: 'fullstack' });
+    console.log(`\n🎉 Successfully created AeroJS fullstack application in "${projectName}"!`);
+    console.log('Next steps:');
+    console.log(`  1. cd ${projectName}`);
+    console.log('  2. npm install');
+    console.log('  3. npm run dev\n');
+    return;
   }
 
   fs.mkdirSync(targetDir, { recursive: true });
@@ -35,7 +47,6 @@ export function createNewProject(projectName: string, template: string) {
   if (template === 'api-starter') scaffoldApiStarter(targetDir);
   else if (template === 'react-inertia') scaffoldReactInertia(targetDir);
   else if (template === 'vue-inertia') scaffoldVueInertia(targetDir);
-  else if (template === 'hospital-erp') scaffoldHospitalErp(targetDir);
 
   console.log(`\n🎉 Successfully created AeroJS application!`);
   console.log('Next steps:');
@@ -101,7 +112,7 @@ PORT=3000
 DB_CONNECTION=sqlite
 DB_DATABASE=storage/database.sqlite
 `;
-  if (template === 'api-starter' || template === 'hospital-erp') {
+  if (template === 'api-starter') {
     env += `\nCACHE_DRIVER=redis\nREDIS_HOST=127.0.0.1\nREDIS_PORT=6379\n`;
   }
   return env;
@@ -183,37 +194,5 @@ export default defineConfig({ plugins: [vue()] });
 
   fs.writeFileSync(path.join(dir, 'resources/js/Pages/Home.vue'), `
 <template><div>Welcome to AeroJS + Vue!</div></template>
-  `.trim());
-}
-
-function scaffoldHospitalErp(dir: string) {
-  const modelsDir = path.join(dir, 'app/models');
-  fs.mkdirSync(modelsDir, { recursive: true });
-  fs.mkdirSync(path.join(dir, 'database/seeders'), { recursive: true });
-
-  ['Patient.ts', 'Doctor.ts', 'Appointment.ts', 'MedicalRecord.ts', 'Bill.ts', 'PharmacyItem.ts'].forEach(m => {
-    fs.writeFileSync(path.join(modelsDir, m), `import { Model } from 'aerojs';\nexport class ${m.replace('.ts', '')} extends Model {}\n`);
-  });
-
-  fs.writeFileSync(path.join(dir, 'database/seeders/HospitalSeeder.ts'), `
-export class HospitalSeeder {
-  async run() { console.log('Seeding hospital records...'); }
-}
-  `.trim());
-
-  fs.writeFileSync(path.join(dir, 'server.ts'), `
-import { Aero } from 'aerojs';
-const app = new Aero();
-
-// WebSocket Presence Channels
-app.ws.channel('departments:emergency', () => true);
-app.ws.channel('queue:opd', () => true);
-
-// Medical streaming
-app.get('/dicom/:id', async (ctx) => {
-  await ctx.res.streamFile(ctx.req, './storage/dummy.dcm', { range: true });
-});
-
-app.listen(3000);
   `.trim());
 }

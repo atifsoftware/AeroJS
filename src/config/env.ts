@@ -12,7 +12,18 @@ export interface EnvRule {
   default?: unknown;
 }
 
+import { TypedEnv, EnvValidationError } from './env-schema.js';
+export { TypedEnv, EnvValidationError };
+
 export class Env {
+  public static schema = TypedEnv.schema;
+  public static string = TypedEnv.string;
+  public static number = TypedEnv.number;
+  public static boolean = TypedEnv.boolean;
+  public static enum = TypedEnv.enum;
+  public static url = TypedEnv.url;
+  public static email = TypedEnv.email;
+
   public get(key: string, defaultValue?: string): string {
     const val = process.env[key];
     if (val !== undefined) {

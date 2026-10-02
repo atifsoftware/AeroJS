@@ -5,6 +5,10 @@
  * rate limiting, and security headers.
  */
 
+import { ModuleRegistry } from '../di/decorators.js';
+import 'reflect-metadata';
+import { policyPlugin, type PolicyEngine } from '../auth/policy.js';
+import { tenancyPlugin, type TenancyOptions } from '../tenancy/tenant.js';
 import { ApplicationCore, type HookMap, type HookName } from './application-core.js';
 import type { DefaultState } from './context.js';
 import { serveStatic, type StaticOptions } from '../static/static.js';
@@ -15,6 +19,10 @@ import { rateLimit, type RateLimitOptions } from '../security/rate-limiter.js';
 import { securityHeaders, type SecurityHeadersOptions } from '../security/headers.js';
 import { graphqlPlugin, type GraphQLPluginOptions } from '../graphql/plugin.js';
 import { diagnosticsPlugin, type DiagnosticsOptions } from '../diagnostics/diagnostics-plugin.js';
+import { i18nPlugin, type I18nOptions } from '../i18n/i18n.js';
+import { TcpServer, type TcpServerOptions } from '../tcp/tcp-server.js';
+
+
 
 export { ApplicationCore, type HookMap, type HookName } from './application-core.js';
 
@@ -25,11 +33,43 @@ export { ApplicationCore, type HookMap, type HookName } from './application-core
  */
 export class Aero<State = DefaultState> extends ApplicationCore<State> {
   /**
+   * Enables automatic Multi-Tenancy Data Scoping.
+   */
+  public useTenancy(options: TenancyOptions): this {
+    return this.register(tenancyPlugin(options)) as this;
+  }
+
+  /**
+   * Enables the Typed Permission Policy Engine.
+   */
+  public usePolicyEngine(engine: PolicyEngine): this {
+    return this.register(policyPlugin(engine)) as this;
+  }
+
+  /**
+   * Registers a group of Modules containing controllers and injectable service providers.
+   */
+  public useModules(modules: any[]): this {
+    for (const mod of modules) {
+      ModuleRegistry.registerModule(mod, this.container);
+    }
+    return this;
+  }
+
+  /**
    * Enables Zero-Dependency GraphQL execution and interactive Playground.
    */
   public useGraphQL(options: GraphQLPluginOptions): this {
     return this.register(graphqlPlugin(options)) as this;
   }
+
+  /**
+   * Enables the I18n Localization Engine.
+   */
+  public useI18n(options: I18nOptions): this {
+    return this.register(i18nPlugin(options)) as this;
+  }
+
 
   /**
    * Enables Enterprise Diagnostics (Health Checks & Prometheus Metrics).
@@ -134,6 +174,32 @@ export class Aero<State = DefaultState> extends ApplicationCore<State> {
 
     return this;
   }
+
+  /**
+   * Configures OpenAPI 3.1 specification endpoint and interactive Swagger UI.
+   */
+  public useOpenApi(options: {
+    title?: string;
+    version?: string;
+    description?: string;
+    route?: string;
+    specRoute?: string;
+    servers?: Array<{ url: string; description?: string }>;
+    security?: boolean | Record<string, any>;
+  } = {}): this {
+    const uiRoute = options.route || '/api-docs';
+    const specRoute = options.specRoute || '/api-spec.json';
+    return this.useSwagger({ ...options, openapiVersion: '3.1.0', route: uiRoute, specRoute } as any);
+  }
+
+
+  /**
+   * Initializes a raw TCP server gateway for hardware/protocol listeners.
+   */
+  public tcp(options: TcpServerOptions): TcpServer {
+    return new TcpServer(options);
+  }
+
 
   /**
    * Configures Prisma Client as an ORM in Aero, binding it to IoC container and ctx.prisma.

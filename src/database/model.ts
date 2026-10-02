@@ -1,3 +1,4 @@
+import { TenancyContext } from '../tenancy/tenant.js';
 /**
  * @file model.ts
  * @description Lucid-inspired Active Record ORM for AeroJS. Completely rebuilt with:
@@ -244,7 +245,9 @@ export class Model {
   public static table = '';
   public static primaryKey = 'id';
   public static hidden: string[] = [];
-  public static fillable: string[] = [];
+    public static fillable: string[] = [];
+  public static tenanted = false;
+  public static tenantColumn = 'tenant_id';
   public static softDeletes = false;
   public static timestamps: boolean | { createdAt?: string; updatedAt?: string } = true;
   public static connection = 'default';
@@ -586,6 +589,15 @@ export class Model {
     const table = this.getTable();
     const qb = Database.table(table, connectionOrAdapter || this.connection) as any;
     const ModelClass = this;
+
+    // Apply multi-tenancy auto-scope
+    if (this.tenanted) {
+      const tenantId = TenancyContext.getStore();
+      if (tenantId !== undefined) {
+        qb.where(this.tenantColumn, tenantId);
+      }
+    }
+
 
     qb._eagerLoads = [];
     qb._withTrashed = false;

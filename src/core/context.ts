@@ -9,6 +9,8 @@ import { AeroRequest } from './request.js';
 import { AeroResponse } from './response.js';
 import type { CookieOptions, ParsedQuery, RouteParams } from './types.js';
 import { parseCookies } from './utils.js';
+import { SseStream, type SseOptions } from '../sse/sse.js';
+
 import {
   AeroError,
   BadRequestError,
@@ -19,7 +21,6 @@ import {
   InternalError,
   UnprocessableEntityError,
 } from './errors.js';
-import { Logger } from '../logging/logger.js';
 
 export type DefaultState = Record<string, unknown>;
 
@@ -38,17 +39,6 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
   public container?: ContainerLike;
 
   private _cachedCookies?: Record<string, string>;
-
-  public log = {
-    emergency: (message: string, context?: Record<string, unknown>) => Logger.emergency(message, context),
-    alert: (message: string, context?: Record<string, unknown>) => Logger.alert(message, context),
-    critical: (message: string, context?: Record<string, unknown>) => Logger.critical(message, context),
-    error: (message: string, context?: Record<string, unknown>) => Logger.error(message, context),
-    warning: (message: string, context?: Record<string, unknown>) => Logger.warning(message, context),
-    notice: (message: string, context?: Record<string, unknown>) => Logger.notice(message, context),
-    info: (message: string, context?: Record<string, unknown>) => Logger.info(message, context),
-    debug: (message: string, context?: Record<string, unknown>) => Logger.debug(message, context),
-  };
 
   constructor(
     req: AeroRequest | IncomingMessage,
@@ -269,6 +259,48 @@ export class AeroContext<State = DefaultState, Params = RouteParams> {
   public redirect(url: string, status?: number): void {
     this.res.redirect(url, status);
   }
+
+
+  public async can(module: string, action: string, resource?: any): Promise<boolean> {
+    if (!this.container || !this.container.has('policyEngine')) {
+      throw new Error('PolicyEngine not configured. Call app.usePolicyEngine() first.');
+    }
+    const engine = this.container.resolve<any>('policyEngine');
+    const user = (this.state as any).user || (this.req as any).user;
+    return await engine.check(user, module, action, resource);
+  }
+
+  public async authorize(module: string, action: string, resource?: any): Promise<void> {
+    const isAllowed = await this.can(module, action, resource);
+    if (!isAllowed) {
+      throw new ForbiddenError(`Unauthorized to perform '${action}' on '${module}'.`);
+    }
+  }
+
+  public locale = 'en';
+
+  public t(key: string, params?: Record<string, any>): string {
+    if (this.container && this.container.has('i18n')) {
+      const i18n = this.container.resolve<any>('i18n');
+      return i18n.t(key, params, this.locale);
+    }
+    return key;
+  }
+
+  public sse(options?: SseOptions): SseStream {
+    return new SseStream(this.res.raw, options);
+  }
+
+  public pdf(buffer: Buffer): void {
+    this.res.setHeader('Content-Type', 'application/pdf');
+    this.res.send(buffer);
+  }
+
+  public thermalReceipt(buffer: Uint8Array | Buffer): void {
+    this.res.setHeader('Content-Type', 'application/octet-stream');
+    this.res.send(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
+  }
+
 
   public throw(status: number, message?: string, details?: unknown): never {
     switch (status) {

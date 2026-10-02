@@ -3,7 +3,7 @@ import { HealthCheck } from '../src/diagnostics/health-check.js';
 import { PrometheusMetrics } from '../src/diagnostics/prometheus.js';
 import { diagnosticsPlugin } from '../src/diagnostics/diagnostics-plugin.js';
 import { Aero } from '../src/core/application.js';
-import { createTestClient } from '../src/testing/test-client.js';
+import request from 'supertest';
 
 describe('Enterprise Diagnostics & Metrics', () => {
   beforeEach(() => {
@@ -84,36 +84,36 @@ describe('Enterprise Diagnostics & Metrics', () => {
     it('exposes /health and /metrics endpoints', async () => {
       const app = new Aero();
       app.useDiagnostics();
+      app.onError((err, ctx) => {
+        console.error('TEST ERROR:', err);
+        ctx.res.status(500).send(err.message);
+      });
       app.get('/api/test', (ctx) => ctx.res.status(200).send('ok'));
 
-      const client = createTestClient(app);
+      const server = await app.listenAsync(0);
 
       // Hit an API route to generate metrics
-      const resApi = await client.get('/api/test');
-      expect(resApi.status).toBe(200);
+      await request(server).get('/api/test').expect(200);
+      await new Promise(r => setTimeout(r, 10));
 
       // Check health
-      const resHealth = await client.get('/health');
-      expect(resHealth.status).toBe(200);
-      expect(resHealth.json().status).toBe('healthy');
-      expect(resHealth.json().uptime).toBeDefined();
+      const resHealth = await request(server).get('/health').expect(200);
+      expect(resHealth.body.status).toBe('healthy');
+      expect(resHealth.body.uptime).toBeDefined();
 
       // Check metrics
-      const resMetrics = await client.get('/metrics');
-      expect(resMetrics.status).toBe(200);
+      const resMetrics = await request(server).get('/metrics').expect(200);
       expect(resMetrics.headers['content-type']).toContain('text/plain');
-      expect(resMetrics.text()).toContain('http_requests_total{method="GET",path="/api/test",status="200"} 1');
+      expect(resMetrics.text).toContain('http_requests_total{method="GET",path="/api/test",status="200"} 1');
 
       // Add a failing critical check and test 503
       HealthCheck.register('fail-db', () => { throw new Error('bad'); }, { critical: true });
-      const resFail = await client.get('/health');
-      expect(resFail.status).toBe(503);
-      const resReadiness = await client.get('/health/readiness');
-      expect(resReadiness.status).toBe(503);
+      await request(server).get('/health').expect(503);
+      await request(server).get('/health/readiness').expect(503);
       // Liveness should still return 200 because it doesn't run the deep checks, it just checks if the Node process is alive
-      const resLiveness = await client.get('/health/liveness');
-      expect(resLiveness.status).toBe(200);
+      await request(server).get('/health/liveness').expect(200);
+
+      await app.close();
     });
   });
 });
-
