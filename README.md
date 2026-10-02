@@ -26,7 +26,7 @@ Jumpstart your next enterprise application with production-ready starter templat
 
 | Starter Application | Stack | Architecture | Key Features |
 | :--- | :--- | :--- | :--- |
-| **[AeroSaaS (React)](https://github.com/atifsoftware/AeroSaaS)** | React 18 + Inertia.js + Tailwind CSS | Single Page App (SPA) | Kanban board, Executive Dashboard, Scrypt Auth, Signed Invites |
+| **[AeroSaaS-React](https://github.com/atifsoftware/AeroSaaS-React)** | React 18 + Inertia.js + Tailwind CSS | Single Page App (SPA) | Kanban board, Executive Dashboard, Scrypt Auth, Signed Invites |
 | **[AeroSaaS-Vue](https://github.com/atifsoftware/AeroSaaS-Vue)** | Vue 3 (Composition API) + Inertia.js + Tailwind | Single Page App (SPA) | Optimistic UI updates, Kanban board, Swagger docs, Native SQLite |
 | **[AeroSaaS-Edge](https://github.com/atifsoftware/AeroSaaS-Edge)** | AdonisJS Edge.js 6 + Tailwind CSS | Server-Side Rendered (MPA) | Instant FCP, 100% SEO score, In-memory AST caching, Zero client JS |
 | **[AeroSaaS-EJS](https://github.com/atifsoftware/AeroSaaS-EJS)** | EJS Templates + Tailwind CSS | Server-Side Rendered (MPA) | Classic async node streaming, Full dark theme, OpenAPI Swagger |
