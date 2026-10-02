@@ -707,3 +707,113 @@ When asked to build or modify any feature in an AeroJS project:
    npm run build
    npm test
    ```
+
+---
+
+## 11. Enterprise Capabilities Reference (v0.3.0)
+
+### 11.1 Fluent HTTP Client (`Http`)
+```typescript
+import { Http } from 'aerojs';
+
+const res = await Http.baseUrl('https://api.example.com')
+  .withToken('auth-token')
+  .timeout(5000)
+  .retry(3, 100)
+  .get('/data', { page: 1 });
+
+if (res.successful) {
+  const data = res.json();
+}
+```
+
+### 11.2 SMTP Mail Transport (`Mail`)
+```typescript
+import { Mail } from 'aerojs';
+
+Mail.configure({
+  default: 'smtp',
+  mailers: {
+    smtp: {
+      driver: 'smtp',
+      host: process.env.SMTP_HOST || '127.0.0.1',
+      port: Number(process.env.SMTP_PORT) || 587,
+      auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
+    },
+  },
+});
+
+await Mail.send((msg) => {
+  msg.to('user@example.com')
+     .subject('Welcome')
+     .html('<h1>Welcome to AeroJS</h1>');
+});
+```
+
+### 11.3 Redis Rate Limiter & Redis Queue
+```typescript
+import { rateLimit, RedisRateLimitStore, RedisClient, Queue } from 'aerojs';
+
+const redis = new RedisClient({ host: '127.0.0.1', port: 6379 });
+
+// Rate Limiter
+app.use(rateLimit({
+  windowMs: 60_000,
+  max: 100,
+  store: new RedisRateLimitStore({ client: redis, prefix: 'rl:api:' }),
+}));
+
+// Queue
+Queue.configure({
+  default: 'redis',
+  connections: {
+    redis: { driver: 'redis', redis },
+  },
+});
+```
+
+### 11.4 OAuth 2.0 Social Login (`OAuth`)
+```typescript
+import { OAuth } from 'aerojs';
+
+router.get('/auth/google', (ctx) => ctx.redirect(OAuth.driver('google').getRedirectUrl()));
+router.get('/auth/google/callback', async (ctx) => {
+  const { user } = await OAuth.driver('google').handleCallback(ctx.query.code as string);
+  ctx.json({ user });
+});
+```
+
+### 11.5 Multi-Channel Notifications (`Notifications`, `Notification`)
+```typescript
+import { Notification, Notifications, MailMessage } from 'aerojs';
+
+class OrderAlertNotification extends Notification {
+  via() { return ['mail', 'database', 'broadcast']; }
+  toMail(u: any) { return new MailMessage().subject('Alert').text('Hello'); }
+  toDatabase(u: any) { return { alert: 'Order Confirmed' }; }
+}
+
+await Notifications.send(user, new OrderAlertNotification());
+```
+
+### 11.6 Tamper-Proof Signed URLs (`UrlSigner`, `validateSignedUrl`)
+```typescript
+import { UrlSigner, validateSignedUrl, Storage } from 'aerojs';
+
+// Generate temporary signed link
+const downloadUrl = await Storage.temporaryUrl('invoices/inv-101.pdf', 900);
+
+// Validate in route
+router.get('/secure/download', validateSignedUrl(), async (ctx) => {
+  ctx.json({ secure: true });
+});
+```
+
+### 11.7 Extended CLI Generators (`aero make:*`)
+```bash
+aero make:job ProcessPayment
+aero make:mail OrderReceipt
+aero make:policy PatientPolicy
+aero make:event PatientAdmitted
+aero make:listener NotifyDoctor
+```
