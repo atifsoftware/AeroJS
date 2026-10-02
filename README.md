@@ -5,7 +5,8 @@
   ### The Blazing-Fast, Zero-Dependency Full-Stack Web Framework for Node.js
 
   [![CI](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml/badge.svg)](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml)
-  [![NPM Version](https://img.shields.io/badge/npm-v0.1.0-blue.svg)](https://npmjs.com/package/aerojs)
+  [![NPM Version](https://img.shields.io/npm/v/@shohaghinfo/aerojs.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/@shohaghinfo/aerojs)
+  [![NPM Downloads](https://img.shields.io/npm/dm/@shohaghinfo/aerojs.svg?style=flat-square&color=green)](https://www.npmjs.com/package/@shohaghinfo/aerojs)
   [![Coverage: 88%+](https://img.shields.io/badge/coverage-88%25-brightgreen.svg)](package.json)
   [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
   [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
@@ -146,13 +147,50 @@ Aero is engineered from first principles to combine the best architectural conce
 
 ## 📦 Installation
 
+### Option 1: Create a New Project (Recommended)
+
+Scaffold a complete production-ready application in seconds using `npx`:
+
 ```bash
-npm install aerojs
+# Interactive project creation
+npx @shohaghinfo/aerojs new my-app
+
+# Or scaffold in current directory
+npx @shohaghinfo/aerojs init
 ```
 
-Requirements:
-- Node.js >= 20.0.0
-- ESM project (`"type": "module"` in `package.json`)
+### Option 2: Install into an Existing Project
+
+Add AeroJS to your project with your favorite package manager:
+
+```bash
+# npm
+npm install @shohaghinfo/aerojs
+
+# pnpm
+pnpm add @shohaghinfo/aerojs
+
+# yarn
+yarn add @shohaghinfo/aerojs
+
+# bun
+bun add @shohaghinfo/aerojs
+```
+
+### Option 3: Global CLI Installation
+
+```bash
+npm install -g @shohaghinfo/aerojs
+
+# Now you can use the 'aero' command anywhere:
+aero new my-app
+# or
+aerojs new my-app
+```
+
+#### Requirements:
+- **Node.js**: `>= 20.0.0`
+- **Module System**: ESM (`"type": "module"` in `package.json`)
 
 ---
 
@@ -1145,7 +1183,7 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 - Ideal for **Serverless environments** (AWS Lambda, Cloudflare Containers, Vercel Serverless, Google Cloud Run) and autoscaling Docker microservices.
 
 #### 🏎️ Lightning-Fast CI/CD Deployments
-- `npm install aero` downloads only a few kilobytes and completes in **1–2 seconds**, drastically cutting down pipeline build times and bandwidth costs.
+- `npm install @shohaghinfo/aerojs` downloads only a few kilobytes and completes in **1–2 seconds**, drastically cutting down pipeline build times and bandwidth costs.
 
 #### 🌐 Unified Full-Stack Architecture
 - Eliminates context switching and multi-repository overhead: build **REST APIs**, **React/Vue 3 SPAs (Inertia.js)**, and traditional **SSR Views (Edge.js/EJS)** in a single cohesive codebase.
@@ -1157,7 +1195,7 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 
 ## 📊 Comparison Matrix
 
-| Feature | Express | Koa | Fastify | AdonisJS | **Aero** |
+| Feature | Express | Koa | Fastify | AdonisJS | **AeroJS** |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Zero Runtime Dependencies** | ❌ (30+) | ❌ (20+) | ❌ (15+) | ❌ (50+) | **✅ ZERO** |
 | **Radix Tree Routing** | ❌ | ❌ | ✅ | ❌ | **✅ O(k)** |
