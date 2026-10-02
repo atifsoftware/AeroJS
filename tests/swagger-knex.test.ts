@@ -97,13 +97,13 @@ describe('AeroJS Knex Integration & Swagger / OpenAPI 3.0', () => {
       ];
 
       const spec = SwaggerGenerator.generate(routes as any, {
-        title: 'Ecommerce Core API',
+        title: 'Platform Core API',
         version: '2.0.0',
         security: true,
       });
 
       expect(spec.openapi).toBe('3.0.3');
-      expect(spec.info.title).toBe('Ecommerce Core API');
+      expect(spec.info.title).toBe('Platform Core API');
       expect(spec.info.version).toBe('2.0.0');
 
       // Path conversion: /api/users/:id -> /api/users/{id}

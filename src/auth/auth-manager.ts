@@ -2,7 +2,7 @@
  * @file auth-manager.ts
  * @description Central Auth Manager for AeroJS.
  * Manages multiple named guards (session, jwt, api) and exposes ctx.auth.use('guard').
- * Hospital use: ctx.auth.use('session') for cashiers, ctx.auth.use('jwt') for doctors.
+ * Example: ctx.auth.use('session') for web dashboard, ctx.auth.use('jwt') for mobile API.
  */
 
 import type { AeroContext } from '../core/context.js';
@@ -55,10 +55,10 @@ export class Auth {
    * Guards are lazily instantiated per request.
    *
    * @example
-   * // Cashier session auth
+   * // Web session auth
    * await ctx.auth.use('session').authenticate();
    *
-   * // Doctor JWT auth
+   * // Mobile / API JWT auth
    * const user = await ctx.auth.use('jwt').authenticate();
    */
   public use(name?: string): any {
@@ -155,8 +155,8 @@ export function authPlugin(manager: AuthManager, sessionManager?: SessionManager
  * Throws UnauthorizedError if not authenticated.
  *
  * @example
- * router.get('/cashier/dashboard', handler).middleware(auth('session'));
- * router.get('/api/doctor/patients', handler).middleware(auth('jwt'));
+ * router.get('/dashboard', handler).middleware(auth('session'));
+ * router.get('/api/users', handler).middleware(auth('jwt'));
  */
 export function auth(guardName?: string): Middleware {
   return async (ctx, next) => {

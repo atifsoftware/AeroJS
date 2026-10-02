@@ -11,12 +11,12 @@ import { TenancyContext } from '../tenancy/tenant.js';
  *  🆕 NEW: $dirty tracking (know exactly what changed)
  *  🆕 NEW: $original + isDirty(field) helpers
  *
- * Hospital uses:
- *   - Doctor ↔ Specialization (manyToMany via doctor_specializations)
- *   - Hospital → Wards → Beds (hasManyThrough)
- *   - Patient.query().active().opd().byBranch(1).paginate(1, 20)
- *   - @beforeCreate() → generate MRN
- *   - @beforeDelete() → block hard-delete on medical records
+ * Examples:
+ *   - User ↔ Role (manyToMany via user_roles)
+ *   - Country → Users → Posts (hasManyThrough)
+ *   - User.query().active().verified().byRole('admin').paginate(1, 20)
+ *   - @beforeCreate() → generate UUID or reference code
+ *   - @beforeDelete() → enforce audit retention policy
  */
 
 import { Database, type DatabaseRow, type DatabaseAdapter } from './connection.js';
@@ -216,13 +216,7 @@ export class Relation implements PromiseLike<any> {
  * Computed properties are derived from other attributes (not stored in DB).
  *
  * @example
- * class Patient extends Model {
- *   @computed()
- *   get age(): number {
- *     const dob = new Date(this.date_of_birth);
- *     return Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
- *   }
- *
+ * class User extends Model {
  *   @computed()
  *   get fullName(): string {
  *     return `${this.first_name} ${this.last_name}`;
@@ -244,7 +238,7 @@ export function computed(): PropertyDecorator {
  * The attribute is stored encrypted in the database, but read and manipulated as plaintext in application code.
  *
  * @example
- * class Patient extends Model {
+ * class AccountRecord extends Model {
  *   @encrypted()
  *   public ssn!: string;
  * }
@@ -320,8 +314,8 @@ export class Model {
    * Global query scopes automatically applied to every query.
    *
    * @example
-   * class Patient extends Model {
-   *   public static override globalScopes = [BranchScope, ActiveScope];
+   * class User extends Model {
+   *   public static override globalScopes = [TenantScope, ActiveScope];
    * }
    */
   public static globalScopes: Array<(qb: any, ctx?: any) => void> = [];
@@ -474,32 +468,22 @@ export class Model {
    * ManyToMany Relationship via a pivot table.
    *
    * @example
-   * // Doctor ↔ Specialization (pivot: doctor_specializations)
-   * public specializations() {
-   *   return this.manyToMany(Specialization, {
-   *     pivotTable: 'doctor_specializations',
-   *     pivotForeignKey: 'doctor_id',
-   *     pivotRelatedKey: 'specialization_id',
-   *     pivotColumns: ['certified_at'], // extra pivot columns
+   * // User ↔ Role (pivot: user_roles)
+   * public roles() {
+   *   return this.manyToMany(Role, {
+   *     pivotTable: 'user_roles',
+   *     pivotForeignKey: 'user_id',
+   *     pivotRelatedKey: 'role_id',
+   *     pivotColumns: ['assigned_at'], // extra pivot columns
    *   });
    * }
    *
-   * // Patient ↔ ICD-11 Diagnosis (pivot: patient_diagnoses)
-   * public diagnoses() {
-   *   return this.manyToMany(Diagnosis, {
-   *     pivotTable: 'patient_diagnoses',
-   *     pivotForeignKey: 'patient_id',
-   *     pivotRelatedKey: 'diagnosis_code',
-   *   });
-   * }
-   *
-   * // OT Surgery ↔ Surgeon team (pivot: ot_surgery_doctors)
-   * public surgeons() {
-   *   return this.manyToMany(Doctor, {
-   *     pivotTable: 'ot_surgery_doctors',
-   *     pivotForeignKey: 'surgery_id',
-   *     pivotRelatedKey: 'doctor_id',
-   *     pivotColumns: ['role'], // primary_surgeon, assistant, anesthesiologist
+   * // Article ↔ Tag (pivot: article_tags)
+   * public tags() {
+   *   return this.manyToMany(Tag, {
+   *     pivotTable: 'article_tags',
+   *     pivotForeignKey: 'article_id',
+   *     pivotRelatedKey: 'tag_id',
    *   });
    * }
    */
@@ -530,19 +514,19 @@ export class Model {
    * HasManyThrough Relationship.
    *
    * @example
-   * // Hospital has many Beds through Wards
-   * public beds() {
-   *   return this.hasManyThrough(Bed, Ward, {
-   *     foreignKey: 'hospital_id',       // FK on Ward pointing to Hospital
-   *     throughForeignKey: 'ward_id',    // FK on Bed pointing to Ward
+   * // Country has many Posts through Users
+   * public posts() {
+   *   return this.hasManyThrough(Post, User, {
+   *     foreignKey: 'country_id',       // FK on User pointing to Country
+   *     throughForeignKey: 'user_id',   // FK on Post pointing to User
    *   });
    * }
    *
-   * // Country has many Patients through Hospitals
-   * public patients() {
-   *   return this.hasManyThrough(Patient, Hospital, {
-   *     foreignKey: 'country_id',
-   *     throughForeignKey: 'hospital_id',
+   * // Organization has many Tasks through Projects
+   * public tasks() {
+   *   return this.hasManyThrough(Task, Project, {
+   *     foreignKey: 'organization_id',
+   *     throughForeignKey: 'project_id',
    *   });
    * }
    */
@@ -573,11 +557,11 @@ export class Model {
    * Attach related records to the ManyToMany pivot table.
    *
    * @example
-   * // Attach specializations to doctor
-   * await doctor.attach('specializations', [1, 3, 5]);
+   * // Attach roles to user
+   * await user.attach('roles', [1, 3, 5]);
    *
-   * // Attach with pivot data (e.g. certified_at date)
-   * await doctor.attach('specializations', { 1: { certified_at: '2024-01-01' } });
+   * // Attach with pivot data (e.g. assigned_at date)
+   * await user.attach('roles', { 1: { assigned_at: '2024-01-01' } });
    */
   public async attach(
     relationName: string,
@@ -613,8 +597,8 @@ export class Model {
    * Detach related records from the ManyToMany pivot table.
    *
    * @example
-   * await doctor.detach('specializations', [3]); // detach specific
-   * await doctor.detach('specializations');       // detach all
+   * await user.detach('roles', [3]); // detach specific
+   * await user.detach('roles');       // detach all
    */
   public async detach(
     relationName: string,
@@ -640,8 +624,8 @@ export class Model {
    * Sync pivot table — detach all then re-attach.
    *
    * @example
-   * // Sync a doctor's specializations (replaces all existing)
-   * await doctor.sync('specializations', [1, 3, 5]);
+   * // Sync user's roles (replaces all existing)
+   * await user.sync('roles', [1, 3, 5]);
    */
   public async sync(
     relationName: string,
@@ -1049,8 +1033,8 @@ export class Model {
    * Update or create a record.
    *
    * @example
-   * await Patient.updateOrCreate(
-   *   { mrn: 'AKMMCH-2024-0001' },
+   * await User.updateOrCreate(
+   *   { email: 'user@example.com' },
    *   { name: 'Rahim', phone: '01700000000' }
    * );
    */

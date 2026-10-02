@@ -1,6 +1,6 @@
 /**
  * @file mllp.ts
- * @description Minimal Lower Layer Protocol (MLLP) framing helper for HL7 clinical interfaces.
+ * @description Minimal Lower Layer Protocol (MLLP) framing helper for framed socket interfaces.
  */
 
 export class MLLP {
@@ -41,7 +41,7 @@ export class MLLP {
    */
   public static ack(controlId: string = '1', ackCode = 'AA'): Buffer {
     const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
-    const ackMsg = `MSH|^~\\&|AERO_GATEWAY|AERO_HOSPITAL|LAB_ANALYZER|LAB|${timestamp}||ACK|${controlId}|P|2.3.1\rMSA|${ackCode}|${controlId}\r`;
+    const ackMsg = `MSH|^~\\&|AERO_GATEWAY|AERO_APP|CLIENT|RECEIVER|${timestamp}||ACK|${controlId}|P|2.3.1\rMSA|${ackCode}|${controlId}\r`;
     return MLLP.wrap(ackMsg);
   }
 }

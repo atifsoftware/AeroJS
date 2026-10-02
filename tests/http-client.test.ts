@@ -69,15 +69,15 @@ describe('AeroJS Fluent HTTP Client', () => {
   });
 
   it('performs live POST request with Bearer token, custom headers, and JSON body', async () => {
-    const payload = { title: 'Test Lab Order', amount: 1500 };
+    const payload = { title: 'Test Order', amount: 1500 };
     const res = await Http.baseUrl(serverUrl)
       .withToken('secret-api-token-xyz')
-      .withHeaders({ 'X-Custom-Tenant': 'hospital-dhaka' })
+      .withHeaders({ 'X-Custom-Tenant': 'tenant-dhaka' })
       .post('/json-echo', payload);
 
     expect(res.ok).toBe(true);
     expect(lastServerRequest.headers?.['authorization']).toBe('Bearer secret-api-token-xyz');
-    expect(lastServerRequest.headers?.['x-custom-tenant']).toBe('hospital-dhaka');
+    expect(lastServerRequest.headers?.['x-custom-tenant']).toBe('tenant-dhaka');
     expect(lastServerRequest.headers?.['content-type']).toContain('application/json');
 
     const data = res.json();
@@ -102,19 +102,19 @@ describe('AeroJS Fluent HTTP Client', () => {
 
   it('supports testing fakes using Http.fake() and assertions with Http.assertSent()', async () => {
     Http.fake({
-      '/api/v1/patients': { id: 1, name: 'John Doe', status: 'Admitted' },
+      '/api/v1/users': { id: 1, name: 'John Doe', status: 'Active' },
       '/api/v1/billing': Http.response({ invoiceId: 'INV-550' }, 201),
     });
 
-    const patientRes = await Http.get('https://external-hospital.org/api/v1/patients');
-    expect(patientRes.ok).toBe(true);
-    expect(patientRes.json().name).toBe('John Doe');
+    const userRes = await Http.get('https://external-api.org/api/v1/users');
+    expect(userRes.ok).toBe(true);
+    expect(userRes.json().name).toBe('John Doe');
 
-    const billingRes = await Http.post('https://external-hospital.org/api/v1/billing', { total: 500 });
+    const billingRes = await Http.post('https://external-api.org/api/v1/billing', { total: 500 });
     expect(billingRes.status).toBe(201);
     expect(billingRes.json().invoiceId).toBe('INV-550');
 
-    Http.assertSent((req) => req.url.includes('/api/v1/patients') && req.method === 'GET');
+    Http.assertSent((req) => req.url.includes('/api/v1/users') && req.method === 'GET');
     Http.assertSent((req) => req.url.includes('/api/v1/billing') && req.method === 'POST');
     Http.assertNotSent((req) => req.url.includes('/api/v1/unknown'));
   });

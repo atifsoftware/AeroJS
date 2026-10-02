@@ -26,7 +26,7 @@ export class PolicyEngine {
   public async check(user: any, module: string, action: string, resource?: any): Promise<boolean> {
     if (!user) return false;
 
-    // Check wildcard action for module (e.g. 'Patient:*')
+    // Check wildcard action for module (e.g. 'Post:*')
     const wildcardKey = `${module}:*`;
     if (this.policies.has(wildcardKey)) {
       const fn = this.policies.get(wildcardKey)!;

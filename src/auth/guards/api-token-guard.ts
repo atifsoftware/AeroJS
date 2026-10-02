@@ -2,7 +2,7 @@
  * @file api-token-guard.ts
  * @description Database-backed API Token Authentication Guard for AeroJS.
  * Tokens are stored in DB, can be revoked individually, and carry scopes.
- * Hospital use: LIS analyzer integration, FHIR gateway, Corporate TPA API access.
+ * Suitable for machine-to-machine integrations, webhooks, and third-party API clients.
  */
 
 import type { AeroContext } from '../../core/context.js';
@@ -70,7 +70,7 @@ export class ApiTokenGuard implements GuardContract {
 
   /**
    * Checks if the token has a specific ability/scope.
-   * Hospital use: ctx.auth.use('api').can('lab:write')
+   * Example: ctx.auth.use('api').can('orders:write')
    */
   public can(ability: string): boolean {
     if (!this._token) return false;
@@ -141,8 +141,6 @@ export class ApiTokenGuard implements GuardContract {
   /**
    * Generates a new plain token and its SHA-256 hash.
    * Store hashedToken in DB, show plainToken once to the user.
-   *
-   * Hospital use: Generate integration token for LIS analyzer, TPA system.
    */
   public static generate(prefix = 'aero_'): GeneratedToken {
     const random = crypto.randomBytes(40).toString('hex');

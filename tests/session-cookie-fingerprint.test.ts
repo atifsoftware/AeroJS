@@ -20,7 +20,7 @@ describe('Encrypted CookieSessionDriver & Request Fingerprinting', () => {
 
     app.post('/login', async (ctx) => {
       await ctx.session.put('userId', 101);
-      await ctx.session.put('role', 'doctor');
+      await ctx.session.put('role', 'manager');
       ctx.json({ success: true });
     });
 
@@ -47,7 +47,7 @@ describe('Encrypted CookieSessionDriver & Request Fingerprinting', () => {
     const cookieVal = decodeURIComponent(match![1]!);
 
     expect(cookieVal.startsWith('aero:enc:')).toBe(true);
-    expect(cookieVal).not.toContain('doctor'); // Ensure plaintext not leaked
+    expect(cookieVal).not.toContain('manager'); // Ensure plaintext not leaked
 
     // 2. Access profile using the encrypted session cookie
     const profileRes = await client.get('/profile', {
@@ -58,7 +58,7 @@ describe('Encrypted CookieSessionDriver & Request Fingerprinting', () => {
 
     expect(profileRes.status).toBe(200);
     expect(profileRes.json().userId).toBe(101);
-    expect(profileRes.json().role).toBe('doctor');
+    expect(profileRes.json().role).toBe('manager');
   });
 
   it('safely rejects tampered cookies without crashing', async () => {

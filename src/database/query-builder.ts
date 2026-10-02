@@ -723,18 +723,17 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Prevents other transactions from reading or modifying the locked rows
    * until the current transaction commits or rolls back.
    *
-   * Hospital use: Bed allocation — prevents two staff from booking the same bed.
-   * Blind cash closing — locks the shift session row during denomination count.
+   * Use-case: High-concurrency seat or inventory reservation — prevents double allocation.
    *
    * @example
    * await DB.transaction(async (trx) => {
-   *   const bed = await DB.table('beds')
-   *     .where('id', bedId)
+   *   const seat = await DB.table('seats')
+   *     .where('id', seatId)
    *     .lockForUpdate()
    *     .first();
    *
-   *   if (bed.status !== 'vacant') throw new Error('Bed already occupied');
-   *   await DB.table('beds').where('id', bedId).update({ status: 'reserved' });
+   *   if (seat.status !== 'available') throw new Error('Seat already reserved');
+   *   await DB.table('seats').where('id', seatId).update({ status: 'reserved' });
    * });
    */
   public lockForUpdate(): this {
@@ -746,7 +745,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Acquires a shared lock (SELECT ... FOR SHARE / LOCK IN SHARE MODE).
    * Other transactions can read but cannot modify the locked rows.
    *
-   * Hospital use: Reading stock quantities during concurrent dispensing checks.
+   * Use-case: Reading inventory levels during concurrent ordering checks.
    */
   public sharedLock(): this {
     this.lockMode = 'SHARE';

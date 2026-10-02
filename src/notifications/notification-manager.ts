@@ -156,7 +156,7 @@ export class NotificationManager {
 export const Notifications = new NotificationManager();
 
 /**
- * Mixin / Helper function to send notification from a user/patient model.
+ * Mixin / Helper function to send notification from a user model.
  * Example: notify(user, new InvoiceNotification(inv));
  */
 export async function notify(notifiable: any, notification: Notification): Promise<void> {

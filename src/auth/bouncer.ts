@@ -8,10 +8,10 @@
  * - Policy-based authorization: ctx.bouncer.authorize(DiscountPolicy, 'approve', discount)
  * - Data-scoped checks: enforcing branch-level data isolation
  *
- * Hospital use:
- *   - Section 22: Discount approval matrix (cashier 0%, supervisor 5%, MS 15%, CEO any)
- *   - Section 37: Maker-Checker dual control for refunds, POs, supplier payments
- *   - Section 25: Branch-scoped data access (operator sees only own branch)
+ * Enterprise use:
+ *   - Role-based authorization matrix
+ *   - Maker-Checker dual control for approvals and transactions
+ *   - Branch-scoped or organization-scoped data access
  */
 
 import type { AeroContext } from '../core/context.js';
@@ -32,7 +32,7 @@ export type PolicyConstructor = new () => PolicyContract;
 export interface PermissionStore {
   /**
    * Returns all roles for a given user ID.
-   * Example: ['cashier', 'ipd_operator']
+   * Example: ['member', 'editor', 'admin']
    */
   getRoles(userId: string | number): Promise<string[]>;
 
@@ -127,13 +127,7 @@ export class Bouncer {
   }
 
   /**
-   * Hospital-specific: Check discount approval authority.
-   *
-   * Rules (Section 22):
-   *   cashier     → 0%
-   *   supervisor  → up to 5%
-   *   ms          → up to 15%
-   *   director/ceo → unlimited
+   * Enterprise approval check: Check approval authority threshold based on role.
    *
    * @example
    * if (!await ctx.bouncer.canApproveDiscount(12.5)) {
@@ -145,17 +139,16 @@ export class Bouncer {
     const roles = await this.loadRoles();
 
     if (roles.includes('ceo') || roles.includes('director') || roles.includes('admin')) return true;
-    if (roles.includes('ms') || roles.includes('medical_superintendent')) return percent <= 15;
-    if (roles.includes('supervisor') || roles.includes('incharge')) return percent <= 5;
-    return percent <= 0; // cashier — no discount authority
+    if (roles.includes('manager') || roles.includes('lead')) return percent <= 15;
+    if (roles.includes('supervisor')) return percent <= 5;
+    return percent <= 0;
   }
 
   /**
-   * Hospital-specific: Check if user belongs to a specific branch.
-   * Enforces Section 25 — branch data scoping.
+   * Enterprise data scoping: Check if user belongs to a specific organizational branch or tenant.
    *
    * @example
-   * await ctx.bouncer.assertBranch(patient.branchId);
+   * await ctx.bouncer.assertBranch(resource.branchId);
    */
   public async assertBranch(resourceBranchId: string | number): Promise<void> {
     if (!this.user) throw new UnauthorizedError('Not authenticated');

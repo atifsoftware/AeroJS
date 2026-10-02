@@ -277,7 +277,7 @@ Options:
 
 Available Commands:
   init [dir]                 Scaffold a complete production AeroJS application
-  new <name> [--template]    Create a new AeroJS app (api-starter, react-inertia, vue-inertia, hospital-erp)
+  new <name> [--template]    Create a new AeroJS app (api-starter, react-inertia, vue-inertia, fullstack)
 
   make:controller <name>     Create a new RESTful controller class
   make:model <name> [-m]     Create a new Active Record Model (optionally with migration)

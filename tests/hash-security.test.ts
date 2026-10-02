@@ -4,7 +4,7 @@ import { Hash, hash, hashVerify, QueryBuilder, MemoryDatabaseAdapter } from '../
 describe('AeroJS Security Hardening Suite', () => {
   describe('Hash Module (Zero-Dependency scrypt Password Hashing)', () => {
     it('hashes passwords into secure crypt format', async () => {
-      const password = 'SuperSecretHospitalPassword#2026';
+      const password = 'SuperSecretEnterprisePassword#2026';
       const hashed = await Hash.make(password);
 
       expect(hashed).toBeDefined();
@@ -19,7 +19,7 @@ describe('AeroJS Security Hardening Suite', () => {
     });
 
     it('verifies correct passwords successfully', async () => {
-      const password = 'DoctorEmergencyPin999';
+      const password = 'SecureEmergencyPin999';
       const hashed = await hash(password);
 
       const isValid = await hashVerify(hashed, password);
@@ -56,7 +56,7 @@ describe('AeroJS Security Hardening Suite', () => {
       const qb = new QueryBuilder('users', adapter);
       expect(() => qb.orderBy('id', 'asc')).not.toThrow();
       expect(() => qb.orderBy('users.created_at', 'desc')).not.toThrow();
-      expect(() => qb.orderBy('patient_code', 'ASC')).not.toThrow();
+      expect(() => qb.orderBy('account_code', 'ASC')).not.toThrow();
     });
 
     it('blocks SQL injection attempts in orderBy column identifiers', () => {

@@ -254,7 +254,7 @@ export function makePolicy(name: string, targetDir = 'app/policies'): string {
   }
 
   public create(user: any): boolean {
-    return user.role === 'admin' || user.role === 'doctor';
+    return user.role === 'admin' || user.role === 'editor';
   }
 
   public update(user: any, resource: any): boolean {

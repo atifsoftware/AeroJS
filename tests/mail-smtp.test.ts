@@ -79,23 +79,23 @@ describe('SmtpMailDriver & Mail System', () => {
   it('builds MIME multipart message with text, HTML, and base64 attachments', () => {
     const driver = new SmtpMailDriver({ host: '127.0.0.1', port: serverPort });
     const msg = new MailMessage();
-    msg.from('doctor@hospital.org', 'Dr. John');
-    msg.to(['patient1@hospital.org', 'patient2@hospital.org']);
-    msg.cc('admin@hospital.org');
-    msg.subject('Medical Lab Report');
-    msg.text('Hello, please find your report attached.');
-    msg.html('<h1>Hello</h1><p>Please find your <b>report</b> attached.</p>');
-    msg.attach('report.pdf', Buffer.from('PDF_SAMPLE_DATA'), 'application/pdf');
+    msg.from('billing@example.org', 'Billing Team');
+    msg.to(['user1@example.org', 'user2@example.org']);
+    msg.cc('admin@example.org');
+    msg.subject('Monthly Statement & Invoice');
+    msg.text('Hello, please find your invoice attached.');
+    msg.html('<h1>Hello</h1><p>Please find your <b>invoice</b> attached.</p>');
+    msg.attach('invoice.pdf', Buffer.from('PDF_SAMPLE_DATA'), 'application/pdf');
 
     const mime = driver.buildMimeMessage(msg, '<test-123@localhost>');
 
-    expect(mime).toContain('Subject: Medical Lab Report');
-    expect(mime).toContain('From: "Dr. John" <doctor@hospital.org>');
-    expect(mime).toContain('To: patient1@hospital.org, patient2@hospital.org');
-    expect(mime).toContain('Cc: admin@hospital.org');
+    expect(mime).toContain('Subject: Monthly Statement & Invoice');
+    expect(mime).toContain('From: "Billing Team" <billing@example.org>');
+    expect(mime).toContain('To: user1@example.org, user2@example.org');
+    expect(mime).toContain('Cc: admin@example.org');
     expect(mime).toContain('multipart/mixed');
     expect(mime).toContain('multipart/alternative');
-    expect(mime).toContain('report.pdf');
+    expect(mime).toContain('invoice.pdf');
     expect(mime).toContain(Buffer.from('PDF_SAMPLE_DATA').toString('base64'));
   });
 

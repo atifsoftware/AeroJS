@@ -4,7 +4,7 @@ import { Encrypter, Crypt } from '../src/security/encryption.js';
 
 describe('AES-256-GCM Encrypter & Crypt Facade', () => {
   it('encrypts and decrypts strings correctly', () => {
-    const secret = 'patient-ssn-123-45-6789';
+    const secret = 'user-ssn-123-45-6789';
     const encrypted = Crypt.encrypt(secret);
     expect(encrypted.startsWith('aero:enc:')).toBe(true);
     expect(encrypted).not.toContain(secret);
@@ -38,10 +38,10 @@ describe('AES-256-GCM Encrypter & Crypt Facade', () => {
 });
 
 describe('Model Field-Level Encryption (@encrypted & static encrypted)', () => {
-  class PatientRecord extends Model {
-    public static override table = 'patients';
-    public static override fillable = ['name', 'ssn', 'medical_history'];
-    public static override encrypted = ['ssn', 'medical_history'];
+  class AccountRecord extends Model {
+    public static override table = 'accounts';
+    public static override fillable = ['name', 'ssn', 'private_notes'];
+    public static override encrypted = ['ssn', 'private_notes'];
 
     @encrypted()
     public ssn!: string;
@@ -52,60 +52,60 @@ describe('Model Field-Level Encryption (@encrypted & static encrypted)', () => {
   });
 
   it('stores fields encrypted in the database and transparently decrypts when loaded', async () => {
-    const patient = await PatientRecord.create({
+    const account = await AccountRecord.create({
       name: 'Rahim Khan',
       ssn: '019-99-8888',
-      medical_history: 'Diabetes Type 2, Hypertension',
+      private_notes: 'High net-worth client, confidential portfolio',
     });
 
-    expect(patient.id).toBeDefined();
-    expect(patient.name).toBe('Rahim Khan');
+    expect(account.id).toBeDefined();
+    expect(account.name).toBe('Rahim Khan');
     // In-memory model instance retains plaintext
-    expect(patient.ssn).toBe('019-99-8888');
-    expect(patient.medical_history).toBe('Diabetes Type 2, Hypertension');
+    expect(account.ssn).toBe('019-99-8888');
+    expect(account.private_notes).toBe('High net-worth client, confidential portfolio');
 
     // Inspect RAW database table row to verify encryption at rest
-    const rawRows = await Database.table('patients').get();
+    const rawRows = await Database.table('accounts').get();
     expect(rawRows.length).toBe(1);
-    const rawPatient = rawRows[0]!;
+    const rawAccount = rawRows[0]!;
 
-    expect(rawPatient.name).toBe('Rahim Khan');
-    expect(rawPatient.ssn).toMatch(/^aero:enc:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
-    expect(rawPatient.ssn).not.toContain('019-99-8888');
-    expect(rawPatient.medical_history).toMatch(/^aero:enc:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
-    expect(rawPatient.medical_history).not.toContain('Diabetes');
+    expect(rawAccount.name).toBe('Rahim Khan');
+    expect(rawAccount.ssn).toMatch(/^aero:enc:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    expect(rawAccount.ssn).not.toContain('019-99-8888');
+    expect(rawAccount.private_notes).toMatch(/^aero:enc:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    expect(rawAccount.private_notes).not.toContain('confidential');
 
     // Fetching the model via QueryBuilder / Model.find decrypts automatically
-    const loaded = await PatientRecord.find(patient.id);
+    const loaded = await AccountRecord.find(account.id);
     expect(loaded).not.toBeNull();
     expect(loaded!.name).toBe('Rahim Khan');
     expect(loaded!.ssn).toBe('019-99-8888');
-    expect(loaded!.medical_history).toBe('Diabetes Type 2, Hypertension');
+    expect(loaded!.private_notes).toBe('High net-worth client, confidential portfolio');
 
     // toJSON includes decrypted values
     const json = loaded!.toJSON();
     expect(json.ssn).toBe('019-99-8888');
-    expect(json.medical_history).toBe('Diabetes Type 2, Hypertension');
+    expect(json.private_notes).toBe('High net-worth client, confidential portfolio');
   });
 
   it('updates encrypted fields and keeps them encrypted in database', async () => {
-    const patient = await PatientRecord.create({
+    const account = await AccountRecord.create({
       name: 'Karim Ullah',
       ssn: '111-22-3333',
-      medical_history: 'Asthma',
+      private_notes: 'Initial account notes',
     });
 
-    patient.ssn = '999-88-7777';
-    patient.medical_history = 'Asthma resolved';
-    await patient.save();
+    account.ssn = '999-88-7777';
+    account.private_notes = 'Updated confidential notes';
+    await account.save();
 
-    const rawRows = await Database.table('patients').where('id', patient.id).get();
+    const rawRows = await Database.table('accounts').where('id', account.id).get();
     const raw = rawRows[0]!;
     expect(raw.ssn).toMatch(/^aero:enc:/);
     expect(raw.ssn).not.toContain('999-88-7777');
 
-    const fresh = await PatientRecord.findOrFail(patient.id);
+    const fresh = await AccountRecord.findOrFail(account.id);
     expect(fresh.ssn).toBe('999-88-7777');
-    expect(fresh.medical_history).toBe('Asthma resolved');
+    expect(fresh.private_notes).toBe('Updated confidential notes');
   });
 });

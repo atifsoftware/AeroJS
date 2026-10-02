@@ -813,9 +813,9 @@ router.get('/secure/download', validateSignedUrl(), async (ctx) => {
 ```bash
 aero make:job ProcessPayment
 aero make:mail OrderReceipt
-aero make:policy PatientPolicy
-aero make:event PatientAdmitted
-aero make:listener NotifyDoctor
+aero make:policy PostPolicy
+aero make:event UserRegistered
+aero make:listener SendWelcomeNotification
 ```
 
 ---
@@ -823,7 +823,7 @@ aero make:listener NotifyDoctor
 ## 12. Advanced Enterprise Architecture (v0.4.0)
 
 ### 12.1 Field-Level AES-256-GCM Encryption (`Crypt`, `@encrypted`)
-Protect sensitive compliance data (SSN, medical records, credit cards, credentials) transparently at rest:
+Protect sensitive compliance data (SSN, tax records, credentials, confidential notes) transparently at rest:
 
 ```typescript
 import { Model, encrypted, Crypt } from 'aerojs';
@@ -833,13 +833,13 @@ const ciphertext = Crypt.encrypt('secret-data');
 const plaintext = Crypt.decrypt(ciphertext);
 
 // Model field-level transparent encryption
-export class Patient extends Model {
-  public static override table = 'patients';
+export class AccountRecord extends Model {
+  public static override table = 'accounts';
   public static override primaryKey = 'id';
-  public static override fillable = ['name', 'ssn', 'medical_record', 'diagnosis'];
+  public static override fillable = ['name', 'ssn', 'private_notes'];
   
   // Mark fields for automatic AES-256-GCM encryption
-  public static override encrypted = ['ssn', 'medical_record'];
+  public static override encrypted = ['ssn', 'private_notes'];
 
   // Or use TypeScript property decorator:
   // @encrypted()
@@ -847,10 +847,10 @@ export class Patient extends Model {
 }
 
 // Automatically encrypted on .save() and decrypted on .find() / .all() / .toJSON()
-const patient = await Patient.create({
+const account = await AccountRecord.create({
   name: 'John Doe',
   ssn: '123-45-6789',
-  medical_record: 'Asthma diagnosis',
+  private_notes: 'Confidential client notes',
 });
 ```
 

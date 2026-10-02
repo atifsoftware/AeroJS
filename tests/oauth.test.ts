@@ -49,8 +49,8 @@ describe('AeroJS Social Authentication (OAuth 2.0)', () => {
       },
       'https://www.googleapis.com/oauth2/v3/userinfo': {
         sub: '109283019283',
-        name: 'Dr. John Doe',
-        email: 'john.doe@hospital.org',
+        name: 'John Doe',
+        email: 'john.doe@example.org',
         picture: 'https://google.com/avatar.jpg',
       },
     });
@@ -65,24 +65,24 @@ describe('AeroJS Social Authentication (OAuth 2.0)', () => {
 
     expect(result.accessToken).toBe('google_test_access_token_999');
     expect(result.user.id).toBe('109283019283');
-    expect(result.user.name).toBe('Dr. John Doe');
-    expect(result.user.email).toBe('john.doe@hospital.org');
+    expect(result.user.name).toBe('John Doe');
+    expect(result.user.email).toBe('john.doe@example.org');
     expect(result.user.avatarUrl).toBe('https://google.com/avatar.jpg');
   });
 
   it('supports OAuth.fake() for painless controller unit tests', async () => {
     OAuth.fake({
       id: 'mock-user-42',
-      email: 'doctor@cityhospital.com',
-      name: 'Dr. Sarah Connor',
+      email: 'sarah@company.com',
+      name: 'Sarah Connor',
     });
 
     const driver = OAuth.driver('google');
     const result = await driver.handleCallback('any_code');
 
     expect(result.user.id).toBe('mock-user-42');
-    expect(result.user.email).toBe('doctor@cityhospital.com');
-    expect(result.user.name).toBe('Dr. Sarah Connor');
+    expect(result.user.email).toBe('sarah@company.com');
+    expect(result.user.name).toBe('Sarah Connor');
   });
 
   it('supports custom OAuth providers via OAuth.extend()', () => {

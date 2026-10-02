@@ -1,8 +1,7 @@
 /**
  * @file jwt-guard.ts
  * @description JWT Authentication Guard for AeroJS.
- * Stateless authentication for Doctor Portal API, Mobile App, and external FHIR/HL7 integrations.
- * Hospital use: Doctor's mobile ward-round app authenticates via Bearer JWT token.
+ * Stateless authentication for RESTful APIs, Single-Page Applications (SPA), and Mobile Apps.
  */
 
 import type { AeroContext } from '../../core/context.js';
@@ -17,7 +16,7 @@ export interface JwtGuardConfig {
   secret: string;
 
   /**
-   * Token expiry. Default: '8h' (one hospital shift).
+   * Token expiry. Default: '8h'.
    */
   expiresIn?: string | number;
 
@@ -137,7 +136,7 @@ export class JwtGuard implements GuardContract {
 
   /**
    * Generates a signed JWT token pair for a user.
-   * Hospital use: Doctor logs in → receives { accessToken, expiresIn }.
+   * Example: User logs in → receives { accessToken, expiresIn }.
    */
   public generate(user: AuthUser, options: JwtSignOptions = {}): JwtTokenPair {
     const expiresIn = options.expiresIn ?? this.config.expiresIn ?? '8h';

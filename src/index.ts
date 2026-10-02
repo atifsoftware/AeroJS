@@ -294,7 +294,7 @@ export type {
 import { Aero } from './core/application.js';
 export default Aero;
 
-// ─── Hospital-Grade Enterprise Modules ───────────────────────────────────────
+// ─── Enterprise Modules ───────────────────────────────────────────────────────
 
 // Auth System (Session + JWT + API Token Guards)
 export {
@@ -372,18 +372,17 @@ export {
   Events,
   EventBus,
   DomainEvent,
-  // Hospital Domain Events
-  PatientAdmittedEvent,
-  LabResultReadyEvent,
+  // Canonical Domain Events
+  UserRegisteredEvent,
+  OrderPlacedEvent,
   PaymentReceivedEvent,
-  CodeBlueTriggeredEvent,
-  ShiftClosedEvent,
+  RecordArchivedEvent,
   LowStockAlertEvent,
   type EventListener,
   type EventListenerFn,
 } from './events/event-bus.js';
 
-// Cron Scheduler (Bank Reco, BMDC Alerts, Payroll triggers)
+// Cron Task Scheduler
 export {
   Schedule,
   Scheduler,

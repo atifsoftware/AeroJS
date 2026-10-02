@@ -1,8 +1,7 @@
 /**
  * @file session-guard.ts
  * @description Server-side Session Authentication Guard for AeroJS.
- * Handles cashier terminal sessions, doctor portal logins, and multi-shift management.
- * Hospital use-case: Cashier logs in → session tagged with Shift_Session_ID + Terminal_ID.
+ * Handles web portal logins, user state persistence, and session fixation prevention.
  */
 
 import type { AeroContext } from '../../core/context.js';
@@ -87,7 +86,7 @@ export class SessionGuard implements GuardContract {
 
   /**
    * Logs a user into the session.
-   * Hospital use: cashier.login(user, { remember: false }) — terminates on browser close.
+   * Example: ctx.auth.use('session').login(user, { remember: true });
    */
   public async login(user: AuthUser, options: LoginOptions = {}): Promise<void> {
     await this.session.put(this.userKey, { id: user.id });
@@ -105,7 +104,6 @@ export class SessionGuard implements GuardContract {
 
   /**
    * Logs the authenticated user out and destroys their session.
-   * Hospital use: cashier shift end → session destroyed, terminal freed.
    */
   public async logout(): Promise<void> {
     await this.session.forget(this.userKey);

@@ -42,40 +42,40 @@ describe('AeroJS CLI Extended Scaffolding', () => {
   });
 
   it('scaffolds access policies via "make:policy"', async () => {
-    const code = await AeroCLI.run(['make:policy', 'MedicalRecord']);
+    const code = await AeroCLI.run(['make:policy', 'Post']);
     expect(code).toBe(0);
 
-    const policyPath = path.resolve(process.cwd(), 'app/policies/MedicalRecordPolicy.ts');
+    const policyPath = path.resolve(process.cwd(), 'app/policies/PostPolicy.ts');
     createdFiles.push(policyPath);
     expect(fs.existsSync(policyPath)).toBe(true);
 
     const content = fs.readFileSync(policyPath, 'utf-8');
-    expect(content).toContain('class MedicalRecordPolicy');
+    expect(content).toContain('class PostPolicy');
     expect(content).toContain('create(user: any)');
   });
 
   it('scaffolds domain events via "make:event"', async () => {
-    const code = await AeroCLI.run(['make:event', 'PatientAdmitted']);
+    const code = await AeroCLI.run(['make:event', 'UserRegistered']);
     expect(code).toBe(0);
 
-    const eventPath = path.resolve(process.cwd(), 'app/events/PatientAdmittedEvent.ts');
+    const eventPath = path.resolve(process.cwd(), 'app/events/UserRegisteredEvent.ts');
     createdFiles.push(eventPath);
     expect(fs.existsSync(eventPath)).toBe(true);
 
     const content = fs.readFileSync(eventPath, 'utf-8');
-    expect(content).toContain('class PatientAdmittedEvent extends DomainEvent');
+    expect(content).toContain('class UserRegisteredEvent extends DomainEvent');
   });
 
   it('scaffolds event listeners via "make:listener"', async () => {
-    const code = await AeroCLI.run(['make:listener', 'NotifyDoctor']);
+    const code = await AeroCLI.run(['make:listener', 'SendWelcomeNotification']);
     expect(code).toBe(0);
 
-    const listenerPath = path.resolve(process.cwd(), 'app/listeners/NotifyDoctorListener.ts');
+    const listenerPath = path.resolve(process.cwd(), 'app/listeners/SendWelcomeNotificationListener.ts');
     createdFiles.push(listenerPath);
     expect(fs.existsSync(listenerPath)).toBe(true);
 
     const content = fs.readFileSync(listenerPath, 'utf-8');
-    expect(content).toContain('class NotifyDoctorListener');
+    expect(content).toContain('class SendWelcomeNotificationListener');
     expect(content).toContain('async handle(event: any)');
   });
 });

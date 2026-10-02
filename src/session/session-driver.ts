@@ -46,7 +46,7 @@ export class MemorySessionDriver implements SessionDriver {
 
 /**
  * File-based session driver.
- * Suitable for single-server hospital deployments.
+ * Suitable for single-server standalone deployments.
  */
 export class FileSessionDriver implements SessionDriver {
   private dir: string;
@@ -108,7 +108,7 @@ export class FileSessionDriver implements SessionDriver {
 }
 
 /**
- * Redis session driver — recommended for production hospital deployments.
+ * Redis session driver — recommended for horizontal multi-server production deployments.
  * Requires ioredis: npm install ioredis
  */
 

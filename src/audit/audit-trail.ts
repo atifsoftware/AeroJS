@@ -2,12 +2,11 @@
  * @file audit-trail.ts
  * @description Immutable Audit Trail System for AeroJS.
  *
- * Hospital Architecture Section 38:
- * "হাসপাতালের কোনো মেডিকেল ও ফিন্যান্সিয়াল ডাটা ডাটাবেস থেকে কখনো DELETE করা যাবে না।
- * ভুল এন্ট্রি হলে তা STATUS = VOID বা CANCELLED হবে এবং রিভার্সাল এন্ট্রি পড়বে।"
+ * Provides tamper-evident compliance tracking for sensitive database entities.
+ * Ensures auditable state history without destructive data loss.
  *
  * Stores: User ID, Table/Module, Record ID, Action, Old Value, New Value,
- *         IP Address, Timestamp, Cancellation Reason.
+ *         IP Address, Timestamp, Reason.
  */
 
 import { DB } from '../database/connection.js';
@@ -17,13 +16,13 @@ import { DB } from '../database/connection.js';
 export type AuditAction =
   | 'CREATE'
   | 'UPDATE'
-  | 'VOID'          // Financial/clinical void — replaces DELETE
+  | 'VOID'          // Cancellation / void record — replaces DELETE
   | 'APPROVE'       // Maker-Checker approval
   | 'REJECT'        // Maker-Checker rejection
   | 'PRINT'         // Audit who printed a report/receipt
   | 'LOGIN'         // Auth events
   | 'LOGOUT'
-  | 'LOCK'          // Record locked (e.g., signed lab report)
+  | 'LOCK'          // Record locked (immutable record lock)
   | 'RESTORE'       // Soft-deleted record restored
   | 'EXPORT';       // Data export event
 
@@ -167,7 +166,7 @@ export class AuditTrailManager {
 
   /**
    * Get full history of changes for a specific record.
-   * Hospital use: "Who changed this invoice? Show all modifications."
+   * Example: "Who modified this transaction? Show all changes."
    */
   public async getHistory(tableName: string, recordId: string | number): Promise<AuditLogRecord[]> {
     return await this.driver.getHistory(tableName, recordId);
@@ -175,7 +174,7 @@ export class AuditTrailManager {
 
   /**
    * Get all activity by a specific user in a time range.
-   * Hospital use: "What did cashier #42 do during the night shift?"
+   * Example: "Show all actions performed by user #42 today."
    */
   public async getUserActivity(
     userId: string | number,

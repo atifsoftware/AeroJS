@@ -4,11 +4,11 @@
  * @poppinss/hooks pattern. Supports multiple handlers per event, async execution,
  * decorator-based registration, and one-time hooks.
  *
- * Hospital use:
- *   @beforeSave()  → auto hash password before every save
- *   @beforeCreate() → generate MRN (Medical Record Number)
- *   @afterCreate() → send welcome SMS to new patient
- *   @beforeDelete() → block hard-delete on financial records
+ * Typical use-cases:
+ *   @beforeSave()   → auto-hash password before saving
+ *   @beforeCreate() → generate unique reference code or UUID
+ *   @afterCreate()  → dispatch UserRegistered domain event or send welcome notification
+ *   @beforeDelete() → block deletion or enforce soft-delete policy
  *   @afterUpdate()  → write immutable audit trail
  */
 
@@ -96,22 +96,22 @@ export function getHookRegistry(ModelClass: Function): ModelHookRegistry {
  * as a lifecycle hook handler.
  *
  * @example
- * class Patient extends Model {
+ * class User extends Model {
  *   @beforeCreate()
- *   public static generateMrn(instance: Patient) {
- *     instance.mrn = `AKMMCH-${Date.now()}`;
+ *   public static generateUuid(instance: User) {
+ *     instance.uuid = crypto.randomUUID();
  *   }
  *
  *   @beforeSave()
- *   public static async hashPassword(instance: Patient) {
+ *   public static async hashPassword(instance: User) {
  *     if (instance.$dirty.password) {
  *       instance.password = await hash(instance.password);
  *     }
  *   }
  *
  *   @beforeDelete()
- *   public static blockHardDelete(_instance: Patient) {
- *     throw new Error('Hard delete not allowed. Use patient.void() instead.');
+ *   public static enforceSoftDelete(_instance: User) {
+ *     // Enforce soft-delete logic
  *   }
  * }
  */

@@ -10,7 +10,7 @@ import { Webhook } from '../src/webhook/index.js';
 describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.1', () => {
   describe('TCP / Raw Socket Gateway & MLLP/HL7 Parser', () => {
     it('wraps, unwraps, and generates MLLP ACK envelopes', () => {
-      const msg = 'MSH|^~\\&|SYS1|LAB|AERO|HOSP|20261002060000||ORU^R01|MSG1001|P|2.3.1\rPID|||UHID-4021||Rahim^Uddin\r';
+      const msg = 'MSH|^~\\&|SYS1|FEED|AERO|CLIENT|20261002060000||ORU^R01|MSG1001|P|2.3.1\rPID|||ID-4021||Rahim^Uddin\r';
       const framed = MLLP.wrap(msg);
 
       expect(framed[0]).toBe(0x0b);
@@ -26,17 +26,17 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
     });
 
     it('parses structured HL7 messages into segments and control IDs', () => {
-      const raw = 'MSH|^~\\&|SYSMEX_XN|HEMATOLOGY|AERO_GATEWAY|CORE_LAB|20261002061500||ORU^R01|CTRL-992|P|2.3.1\rPID|1||UHID-8801||Karim^Hasan\rOBX|1|NM|CBC_WBC||7.5|10*3/uL|4.0-11.0|N|F\r';
+      const raw = 'MSH|^~\\&|CLIENT_APP|DATA_FEED|AERO_GATEWAY|CORE_SVC|20261002061500||ORU^R01|CTRL-992|P|2.3.1\rPID|1||ID-8801||Karim^Hasan\rOBX|1|NM|METRIC_VAL||7.5|unit|4.0-11.0|N|F\r';
       const parsed = HL7.parse(raw);
 
-      expect(parsed.sendingApp).toBe('SYSMEX_XN');
+      expect(parsed.sendingApp).toBe('CLIENT_APP');
       expect(parsed.messageType).toBe('ORU^R01');
       expect(parsed.controlId).toBe('CTRL-992');
       expect(parsed.segments.has('PID')).toBe(true);
       expect(parsed.segments.has('OBX')).toBe(true);
 
       const obx = parsed.getSegment('OBX')!;
-      expect(obx[2]).toBe('CBC_WBC');
+      expect(obx[2]).toBe('METRIC_VAL');
       expect(obx[4]).toBe('7.5');
     });
 
@@ -56,7 +56,7 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
 
       const receivedAck = await new Promise<string>((resolve, reject) => {
         const client = net.createConnection({ port }, () => {
-          const testMsg = 'MSH|^~\\&|MINDRAY|LAB|AERO|HOSP|20261002||ORU^R01|TEST-42|P|2.3.1\r';
+          const testMsg = 'MSH|^~\\&|CLIENT_NODE|FEED|AERO|APP|20261002||ORU^R01|TEST-42|P|2.3.1\r';
           client.write(MLLP.wrap(testMsg));
         });
 
@@ -132,7 +132,7 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
 
       await new Promise<void>((resolve) => receiver.listen(18899, resolve));
 
-      const payload = { event: 'patient.discharged', uhid: 'UHID-2026-001' };
+      const payload = { event: 'order.completed', orderId: 'ORD-2026-001' };
       const result = await Webhook.dispatch('http://127.0.0.1:18899/webhook', payload, {
         secret,
         retries: 2,
@@ -157,7 +157,7 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
     it('generates OpenAPI 3.1.0 JSON with chained .openapi() metadata', async () => {
       const app = new Aero();
 
-      app.get('/patients/:id', (ctx) => {
+      app.get('/users/:id', (ctx) => {
         ctx.status(200).json({ id: ctx.req.params.id });
       })
         .schema({
@@ -168,17 +168,17 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
           },
         })
         .openapi({
-          summary: 'Retrieve Patient by UHID',
-          description: 'Fetches permanent lifetime electronic medical record.',
-          tags: ['Patient MPI'],
+          summary: 'Retrieve User by ID',
+          description: 'Fetches user profile details.',
+          tags: ['Users'],
           responses: {
-            '200': { description: 'Patient profile record found' },
-            '404': { description: 'Patient not found' },
+            '200': { description: 'User profile record found' },
+            '404': { description: 'User not found' },
           },
         });
 
       app.useOpenApi({
-        title: 'Hospital Core EMR API',
+        title: 'Core Platform API',
         version: '3.1.0',
         specRoute: '/api-spec.json',
         route: '/api-docs',
@@ -192,13 +192,13 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
       const spec = await specRes.json();
 
       expect(spec.openapi).toBe('3.1.0');
-      expect(spec.info.title).toBe('Hospital Core EMR API');
-      expect(spec.paths['/patients/{id}']).toBeDefined();
+      expect(spec.info.title).toBe('Core Platform API');
+      expect(spec.paths['/users/{id}']).toBeDefined();
 
-      const getOp = spec.paths['/patients/{id}'].get;
-      expect(getOp.summary).toBe('Retrieve Patient by UHID');
-      expect(getOp.description).toBe('Fetches permanent lifetime electronic medical record.');
-      expect(getOp.tags).toContain('Patient MPI');
+      const getOp = spec.paths['/users/{id}'].get;
+      expect(getOp.summary).toBe('Retrieve User by ID');
+      expect(getOp.description).toBe('Fetches user profile details.');
+      expect(getOp.tags).toContain('Users');
       expect(getOp.responses['404']).toBeDefined();
 
       // Test Swagger UI endpoint
@@ -206,7 +206,7 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
       expect(docsRes.status).toBe(200);
       expect(docsRes.headers['content-type']).toContain('text/html');
       const html = await docsRes.text();
-      expect(html).toContain('Hospital Core EMR API');
+      expect(html).toContain('Core Platform API');
       expect(html).toContain('swagger-ui');
     });
   });

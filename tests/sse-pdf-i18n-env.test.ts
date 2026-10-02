@@ -14,7 +14,7 @@ describe('Production Utility Modules: SSE, PDF/Thermal, I18n, Env Schema', () =>
       app.get('/events', (ctx) => {
         const stream = ctx.sse({ heartbeatMs: 1000 });
         stream.send({ message: 'hello' });
-        stream.sendEvent('notice', { alert: 'Code Blue' });
+        stream.sendEvent('notice', { alert: 'System Alert' });
         stream.close();
       });
 
@@ -27,13 +27,13 @@ describe('Production Utility Modules: SSE, PDF/Thermal, I18n, Env Schema', () =>
       const text = await res.text();
       expect(text).toContain('data: {"message":"hello"}');
       expect(text).toContain('event: notice');
-      expect(text).toContain('data: {"alert":"Code Blue"}');
+      expect(text).toContain('data: {"alert":"System Alert"}');
     });
   });
 
   describe('Zero-Dependency PDF & Thermal Receipt Generator', () => {
     it('generates valid %PDF-1.4 document buffer from HTML and template', async () => {
-      const html = '<h1>Invoice #INV-2026</h1><p>Patient: Rahim Uddin</p><p>Total: ৳5,200</p>';
+      const html = '<h1>Invoice #INV-2026</h1><p>Customer: Rahim Uddin</p><p>Total: ৳5,200</p>';
       const pdfBuffer = await PDF.fromHtml(html);
 
       expect(Buffer.isBuffer(pdfBuffer)).toBe(true);
@@ -46,26 +46,26 @@ describe('Production Utility Modules: SSE, PDF/Thermal, I18n, Env Schema', () =>
 
     it('interpolates template data in PDF.generate', async () => {
       const pdfBuffer = await PDF.generate({
-        html: '<h2>Report for {{ patient }}</h2><p>Diagnosis: {{ diagnosis }}</p>',
-        data: { patient: 'Karim', diagnosis: 'Normal' },
+        html: '<h2>Report for {{ customer }}</h2><p>Status: {{ status }}</p>',
+        data: { customer: 'Karim', status: 'Completed' },
       });
 
       const pdfString = pdfBuffer.toString('utf-8');
       expect(pdfString).toContain('Report for Karim');
-      expect(pdfString).toContain('Diagnosis: Normal');
+      expect(pdfString).toContain('Status: Completed');
     });
 
     it('builds ESC/POS thermal receipt binary stream', () => {
       const receipt = ThermalReceipt.build()
-        .header('AERO HOSPITAL')
-        .center('OPD Token: 42')
+        .header('AERO ENTERPRISE')
+        .center('Order Token: 42')
         .divider()
-        .left('Doctor: Dr. Sarah')
-        .right('Room: 204')
+        .left('Operator: Alex')
+        .right('Terminal: 204')
         .divider('=')
-        .row('Consultation Fee', '৳1,000')
-        .barcode('UHID-99882')
-        .qr('https://hospital.aerojs.dev/verify/42')
+        .row('Service Fee', '৳1,000')
+        .barcode('INV-99882')
+        .qr('https://receipt.aerojs.dev/verify/42')
         .cut();
 
       const bytes = receipt.toBuffer();

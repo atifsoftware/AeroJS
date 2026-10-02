@@ -1,8 +1,8 @@
 /**
  * @file scheduler.ts
  * @description Cron-based Task Scheduler for AeroJS.
- * Hospital use: Daily bank reconciliation, BMDC license expiry alerts,
- * shift auto-close, monthly doctor settlement, dividend calculation trigger.
+ * Use-cases: Scheduled maintenance, database backups, automated report generation,
+ * cache warming, email digest dispatches, and periodic cleanup.
  *
  * Zero external dependency — uses Node.js setInterval with cron expression parsing.
  */
@@ -143,11 +143,11 @@ export class Scheduler {
    * Define a new scheduled task using builder pattern.
    *
    * @example
-   * Scheduler.define('DailyBankReco')
+   * Scheduler.define('DailyReport')
    *   .cron('0 23 * * *')
-   *   .description('Daily bank reconciliation after cashiers close')
+   *   .description('Daily report generation and metrics summary')
    *   .run(async () => {
-   *     await BankRecoService.runDailyReco();
+   *     await ReportService.generateDailySummary();
    *   });
    */
   public define(name: string): TaskBuilder {

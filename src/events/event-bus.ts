@@ -3,12 +3,11 @@
  * @description Domain Event Bus for AeroJS.
  * Implements the Reactive Event Bus pattern from Architecture Section 2.
  *
- * Hospital domain events flow:
+ * Enterprise domain events flow:
  *   PaymentReceived     → PostToGeneralLedgerListener, PrintReceiptListener
- *   LabResultReady      → SendLabResultSmsListener, NotifyDoctorListener
- *   PatientAdmitted     → AllocateBedListener, CreateEncounterListener
- *   CodeBlueTriggered   → BroadcastSosListener, LogResponseTimeListener
- *   ShiftClosed         → ReconcileCashDrawerListener, GenerateShiftReportListener
+ *   UserRegistered      → SendWelcomeEmailListener, AssignDefaultRoleListener
+ *   OrderPlaced         → ReserveInventoryListener, NotifyAdminListener
+ *   RecordArchived      → PurgeCacheListener, AuditComplianceListener
  */
 
 import type { AuditLogEntry } from '../audit/audit-trail.js';
@@ -128,7 +127,7 @@ export class EventBus {
    * Dispatches an event asynchronously in the background (fire-and-forget).
    * The current request does not wait for listeners to complete.
    *
-   * Hospital use: After saving a payment, fire PostToGeneralLedgerEvent in background.
+   * Example: After saving a payment, fire PostToGeneralLedgerEvent in background.
    */
   public emitAsync<T extends DomainEvent>(event: T): void {
     setImmediate(() => {
@@ -164,72 +163,56 @@ export class EventBus {
 
 export const Events = new EventBus();
 
-// ─── Hospital Domain Events ───────────────────────────────────────────────────
+// ─── Canonical Domain Events ───────────────────────────────────────────────────
 
-/** Fired when a patient is registered or re-admitted. */
-export class PatientAdmittedEvent extends DomainEvent {
+/** Fired when a user registers or is onboarded. */
+export class UserRegisteredEvent extends DomainEvent {
   constructor(public readonly data: {
-    patientId: string | number;
-    encounterId: string | number;
-    bedId?: string | number;
-    wardId?: string | number;
-    admittedBy: string | number;
+    userId: string | number;
+    email: string;
+    role?: string;
+    metadata?: Record<string, unknown>;
   }) { super(); }
 }
 
-/** Fired when a lab result is finalized and signed by pathologist. */
-export class LabResultReadyEvent extends DomainEvent {
+/** Fired when an order or transaction is placed. */
+export class OrderPlacedEvent extends DomainEvent {
   constructor(public readonly data: {
-    encounterId: string | number;
-    testId: string | number;
-    patientPhone?: string;
-    isPanic: boolean;    // Critical value (Hb < 5, K+ > 6.5)
-    doctorId?: string | number;
+    orderId: string | number;
+    userId: string | number;
+    totalAmount: number;
+    currency?: string;
+    itemsCount: number;
   }) { super(); }
 }
 
-/** Fired when a cash payment is received at any counter. */
+/** Fired when a payment is processed. */
 export class PaymentReceivedEvent extends DomainEvent {
   constructor(public readonly data: {
     invoiceId: string | number;
     amount: number;
-    cashierId: string | number;
-    terminalId: string | number;
-    shiftSessionId: string | number;
-    paymentMethod: 'cash' | 'card' | 'mobile_banking' | 'corporate';
+    payerId: string | number;
+    paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'gateway';
+    transactionRef?: string;
   }) { super(); }
 }
 
-/** Fired when a Code Blue emergency is triggered at any bed/floor. */
-export class CodeBlueTriggeredEvent extends DomainEvent {
+/** Fired when a record or resource is archived. */
+export class RecordArchivedEvent extends DomainEvent {
   constructor(public readonly data: {
-    bedId: string | number;
-    floorId: string | number;
-    wardId: string | number;
-    triggeredBy: string | number;
-    patientId?: string | number;
+    resourceId: string | number;
+    resourceType: string;
+    archivedBy: string | number;
+    reason?: string;
   }) { super(); }
 }
 
-/** Fired when a cashier closes their shift. */
-export class ShiftClosedEvent extends DomainEvent {
-  constructor(public readonly data: {
-    shiftSessionId: string | number;
-    cashierId: string | number;
-    terminalId: string | number;
-    physicalCash: number;
-    systemExpected: number;
-    discrepancy: number;
-  }) { super(); }
-}
-
-/** Fired when a stock item falls below reorder level. */
+/** Fired when a resource quantity or stock falls below threshold. */
 export class LowStockAlertEvent extends DomainEvent {
   constructor(public readonly data: {
     itemId: string | number;
     itemName: string;
-    storeId: string | number;
     currentQty: number;
-    reorderLevel: number;
+    threshold: number;
   }) { super(); }
 }

@@ -2,7 +2,7 @@
  * @file session-manager.ts
  * @description Server-side Session Manager for AeroJS.
  * Provides a clean API for reading/writing session data per HTTP request.
- * Hospital use: Cashier shift sessions, CSRF tokens, flash messages, terminal binding.
+ * Supports authentication sessions, CSRF tokens, flash messages, and device binding.
  */
 
 import crypto from 'node:crypto';
@@ -23,7 +23,7 @@ export interface SessionConfig {
   cookieName?: string;
 
   /**
-   * Session lifetime in seconds. Default: 28800 (8 hours = one hospital shift).
+   * Session lifetime in seconds. Default: 86400 (24 hours).
    */
   lifetime?: number;
 
@@ -109,7 +109,7 @@ export class SessionManager {
 
   /**
    * Set or get a flash message (single-use — removed on next request).
-   * Hospital use: "Shift closed successfully" message after cashier close.
+   * Example: "Profile updated successfully" or "Order submitted".
    */
   public async flash(key: string, value?: unknown): Promise<unknown> {
     await this.ensureLoaded();
@@ -198,7 +198,7 @@ export class SessionManager {
  * @example
  * app.use(sessionPlugin({
  *   driver: new RedisSessionDriver(redisClient),
- *   lifetime: 8 * 3600, // 8-hour hospital shift
+ *   lifetime: 24 * 3600, // 24-hour lifetime
  *   cookie: { httpOnly: true, secure: true, sameSite: 'Strict' }
  * }));
  */

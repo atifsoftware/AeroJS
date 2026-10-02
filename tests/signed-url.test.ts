@@ -15,10 +15,10 @@ describe('AeroJS Tamper-Proof Signed URLs', () => {
   });
 
   it('preserves existing query parameters when signing', () => {
-    const signed = UrlSigner.sign('/reports/lab?format=pdf&patient=901', { expiresIn: 300 });
+    const signed = UrlSigner.sign('/reports/statement?format=pdf&user=901', { expiresIn: 300 });
 
     expect(signed).toContain('format=pdf');
-    expect(signed).toContain('patient=901');
+    expect(signed).toContain('user=901');
     expect(signed).toContain('signature=');
 
     expect(UrlSigner.hasValidSignature(signed)).toBe(true);

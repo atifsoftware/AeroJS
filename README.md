@@ -1225,10 +1225,10 @@ Mail.configure({
 
 // 2. Dispatch with attachments & HTML
 await Mail.send((msg) => {
-  msg.to('patient@example.com')
-     .from('billing@hospital.org', 'Hospital Billing')
+  msg.to('customer@example.com')
+     .from('billing@example.org', 'Billing Department')
      .subject('Monthly Statement & Invoice')
-     .html('<h1>Hello!</h1><p>Please find your medical invoice attached.</p>')
+     .html('<h1>Hello!</h1><p>Please find your monthly invoice attached.</p>')
      .attach('invoice.pdf', pdfBuffer, 'application/pdf');
 });
 ```
@@ -1306,25 +1306,25 @@ AeroJS ships with a powerful, zero-dependency fluent HTTP client built on native
 import { Http } from '@shohaghinfo/aerojs';
 
 // 1. Fluent API calls
-const response = await Http.baseUrl('https://api.hospital-network.com/v1')
+const response = await Http.baseUrl('https://api.example.com/v1')
   .withToken(process.env.API_KEY!)
   .withQuery({ status: 'active', limit: 50 })
   .timeout(5000)
   .retry(3, 200)
-  .get('/patients');
+  .get('/users');
 
 if (response.successful) {
-  const patients = response.json();
-  console.log('Patients fetched:', patients);
+  const users = response.json();
+  console.log('Users fetched:', users);
 }
 
 // 2. Testing Fakes (Mocking external services)
 Http.fake({
-  '/patients': [{ id: 1, name: 'Alice Smith' }],
+  '/users': [{ id: 1, name: 'Alice Smith' }],
   '/billing': Http.response({ invoiceId: 'INV-101' }, 201),
 });
 
-const res = await Http.post('https://api.hospital-network.com/v1/billing', { amount: 500 });
+const res = await Http.post('https://api.example.com/v1/billing', { amount: 500 });
 expect(res.status).toBe(201);
 
 Http.assertSent((req) => req.url.includes('/billing') && req.method === 'POST');
@@ -1446,24 +1446,24 @@ Ensure HIPAA, GDPR, and PCI-DSS compliance by transparently encrypting sensitive
 ```typescript
 import { Model, encrypted, Crypt } from '@shohaghinfo/aerojs';
 
-class PatientRecord extends Model {
-  public static override table = 'patients';
-  public static override fillable = ['name', 'ssn', 'medical_history'];
-  public static override encrypted = ['ssn', 'medical_history'];
+class AccountRecord extends Model {
+  public static override table = 'accounts';
+  public static override fillable = ['name', 'ssn', 'private_notes'];
+  public static override encrypted = ['ssn', 'private_notes'];
 
   @encrypted()
   public ssn!: string;
 }
 
 // 1. Create - Data is stored as aero:enc:<iv>:<tag>:<ciphertext> in the database
-const patient = await PatientRecord.create({
+const account = await AccountRecord.create({
   name: 'Rahim Khan',
   ssn: '019-99-8888',
-  medical_history: 'Diabetes Type 2, Hypertension',
+  private_notes: 'Confidential client information',
 });
 
 // 2. Read - Transparently decrypted on fetch
-const loaded = await PatientRecord.find(patient.id);
+const loaded = await AccountRecord.find(account.id);
 console.log(loaded.ssn); // '019-99-8888' (Plaintext in app code)
 
 // 3. Arbitrary payload encryption via Crypt facade:
@@ -1509,7 +1509,7 @@ const app = new Aero();
 
 // Mount the dashboard with optional role-based protection
 app.useQueueDashboard('/__aero/queue', {
-  title: 'My Hospital Queue Horizon',
+  title: 'AeroJS Queue Horizon',
   pollInterval: 3, // auto-refresh every 3s
   auth: (ctx) => ctx.session?.get('user')?.role === 'superadmin',
 });

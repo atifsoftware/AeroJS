@@ -54,7 +54,7 @@ describe('Database Read Replicas & Master-Slave Routing', () => {
   });
 
   it('always directs write operations (insert, update, delete) to the primary write database', async () => {
-    await Database.table('users').insert({ id: 2, name: 'New Patient', source: 'primary' });
+    await Database.table('users').insert({ id: 2, name: 'New User', source: 'primary' });
 
     // Primary has 2 rows
     expect(primaryDb.getTableData('users')).toHaveLength(2);
