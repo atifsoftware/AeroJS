@@ -8,11 +8,15 @@ import { MemoryQueueDriver } from './drivers/memory-queue-driver.js';
 import { DatabaseQueueDriver } from './drivers/database-queue-driver.js';
 import { QueueWorker, type WorkerOptions } from './worker.js';
 import { Job } from './job.js';
+import { RedisQueueDriver } from './drivers/redis-queue-driver.js';
+import { RedisClient } from '../redis/redis-client.js';
 
 export interface QueueConnectionConfig {
-  driver: 'memory' | 'database' | string;
+  driver: 'memory' | 'database' | 'redis' | string;
   table?: string;
   connection?: string;
+  redis?: RedisClient;
+  redisOptions?: any;
 }
 
 export interface QueueConfig {
@@ -54,10 +58,15 @@ export class QueueManager {
       return this.instantiatedDrivers.get(connName)!;
     }
 
-    const cfg = this.connectionConfigs.get(connName) || { driver: connName === 'database' ? 'database' : 'memory' };
+    const cfg = this.connectionConfigs.get(connName) || { driver: connName === 'database' ? 'database' : (connName === 'redis' ? 'redis' : 'memory') };
     let driverInstance: QueueDriver;
 
     switch (cfg.driver) {
+      case 'redis': {
+        const client = cfg.redis || new RedisClient(cfg.redisOptions);
+        driverInstance = new RedisQueueDriver(client);
+        break;
+      }
       case 'database':
         driverInstance = new DatabaseQueueDriver({
           table: cfg.table,

@@ -6,14 +6,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { makeController, makeModel, makeMigration, makeMiddleware, makeSeeder } from './commands/make.js';
 import { initProject } from './commands/init.js';
 import { createNewProject } from './commands/new.js';
 import { encryptEnv, decryptEnv } from './commands/vault.js';
 import { Migrator } from '../database/migrator.js';
 
+function readPackageVersion(): string {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    // dist/cli/runner.js → ../../package.json
+    const pkgPath = path.resolve(__dirname, '../../package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return pkg.version ?? '0.1.2';
+  } catch {
+    return '0.1.2';
+  }
+}
+
 export class AeroCLI {
-  public static version = '0.1.0';
+  public static version = readPackageVersion();
 
   public static async run(argv: string[] = process.argv.slice(2)): Promise<number> {
     const command = argv[0];

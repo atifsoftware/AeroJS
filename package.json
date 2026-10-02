@@ -1,6 +1,6 @@
 {
   "name": "@shohaghinfo/aerojs",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A minimal, blazing-fast, zero-dependency full-stack web framework for Node.js — supporting React, Vue 3, Inertia.js, and SSR monoliths.",
   "repository": {
     "type": "git",
@@ -82,6 +82,10 @@
     "./diagnostics": {
       "types": "./dist/diagnostics/index.d.ts",
       "import": "./dist/diagnostics/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
     }
   },
   "files": [

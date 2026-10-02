@@ -7,4 +7,5 @@ export * from './message.js';
 export * from './drivers/mail-driver.js';
 export * from './drivers/memory-mail-driver.js';
 export * from './drivers/log-mail-driver.js';
+export * from './drivers/smtp-mail-driver.js';
 export * from './mailer.js';

@@ -58,6 +58,10 @@
   28. [Background Queue & Mail System (`Queue`, `Mail`)](#28-background-queue--mail-system-queue-mail)
   29. [OpenAPI 3.0 & Interactive Swagger UI (`useSwagger`)](#29-openapi-30--interactive-swagger-ui-useswagger)
   30. [Aero Command-Line Interface (`aero` CLI)](#30-aero-command-line-interface-aero-cli)
+  31. [SMTP Mail Driver (`SmtpMailDriver`, `Mail`)](#31-smtp-mail-driver-smtpmaildriver-mail)
+  32. [Distributed Redis Rate Limiter (`RedisRateLimitStore`)](#32-distributed-redis-rate-limiter-redisratelimitstore)
+  33. [Redis Queue Driver with DLQ (`RedisQueueDriver`)](#33-redis-queue-driver-with-dlq-redisqueuedriver)
+  34. [Fluent HTTP Client (`Http`, `HttpResponse`)](#34-fluent-http-client-http-httpresponse)
 - [Performance, Size & Advantages](#-performance-size--advantages)
 - [Comparison Matrix](#-comparison-matrix)
 - [License](#-license)
@@ -1190,6 +1194,138 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 
 #### 🧪 Socket-Free In-Process Testing (`aero/testing`)
 - Write unit and integration tests that run at **>23,000 requests/second** without opening TCP sockets, eliminating OS port collisions, firewall popups, and socket leaks.
+
+---
+
+### 31. SMTP Mail Driver (`SmtpMailDriver`, `Mail`)
+
+AeroJS includes a **zero-dependency native SMTP transport** directly built on Node.js `net` and `tls` sockets. Supports SSL (port 465), STARTTLS (port 587/25), AUTH LOGIN, multipart HTML & plain text, and base64 attachments.
+
+```typescript
+import { Mail, MailMessage, SmtpMailDriver } from '@shohaghinfo/aerojs';
+
+// 1. Configure in MailManager
+Mail.configure({
+  default: 'smtp',
+  mailers: {
+    smtp: {
+      driver: 'smtp',
+      host: 'smtp.mailtrap.io',
+      port: 587,
+      auth: {
+        user: process.env.SMTP_USER!,
+        pass: process.env.SMTP_PASS!,
+      },
+    },
+  },
+});
+
+// 2. Dispatch with attachments & HTML
+await Mail.send((msg) => {
+  msg.to('patient@example.com')
+     .from('billing@hospital.org', 'Hospital Billing')
+     .subject('Monthly Statement & Invoice')
+     .html('<h1>Hello!</h1><p>Please find your medical invoice attached.</p>')
+     .attach('invoice.pdf', pdfBuffer, 'application/pdf');
+});
+```
+
+---
+
+### 32. Distributed Redis Rate Limiter (`RedisRateLimitStore`)
+
+For distributed production deployments running behind reverse proxies or multiple server nodes, `RedisRateLimitStore` synchronizes rate limit counters across all instances via atomic Redis commands.
+
+```typescript
+import { Aero, rateLimit, RedisRateLimitStore, RedisClient } from '@shohaghinfo/aerojs';
+
+const app = new Aero();
+const redis = new RedisClient({ host: '127.0.0.1', port: 6379 });
+
+app.use(
+  rateLimit({
+    windowMs: 60_000, // 1 minute
+    max: 100,         // 100 requests per minute
+    store: new RedisRateLimitStore({
+      client: redis,
+      prefix: 'rl:api:',
+      fallbackToMemory: true, // Gracefully handles Redis disconnection
+    }),
+  })
+);
+```
+
+---
+
+### 33. Redis Queue Driver with DLQ (`RedisQueueDriver`)
+
+AeroJS provides a production-grade background job queue backed by Redis with FIFO execution (`LPUSH`/`RPOP`), delayed scheduling (`ZADD`), worker reservation tracking, retry backoff, and a Dead Letter Queue (DLQ).
+
+```typescript
+import { Queue, Job, RedisQueueDriver, RedisClient } from '@shohaghinfo/aerojs';
+
+// 1. Configure Redis Queue Connection
+Queue.configure({
+  default: 'redis',
+  connections: {
+    redis: {
+      driver: 'redis',
+      redis: new RedisClient({ host: '127.0.0.1', port: 6379 }),
+    },
+  },
+});
+
+// 2. Define Background Job
+class ProcessPayrollJob extends Job {
+  public async handle(): Promise<void> {
+    console.log(`Processing payroll batch #${this.data.batchId}...`);
+  }
+}
+Queue.registerJob('ProcessPayrollJob', ProcessPayrollJob);
+
+// 3. Dispatch Job (Immediate or Delayed)
+await Queue.dispatch(new ProcessPayrollJob({ batchId: 402 }), {
+  delay: 10, // Wait 10 seconds before execution
+});
+
+// 4. Start Worker
+const worker = Queue.createWorker({ concurrency: 5 });
+await worker.start();
+```
+
+---
+
+### 34. Fluent HTTP Client (`Http`, `HttpResponse`)
+
+AeroJS ships with a powerful, zero-dependency fluent HTTP client built on native `fetch`. It supports automatic JSON serialization, query string formatting, Bearer/Basic authentication, timeouts, retries, and comprehensive testing fakes.
+
+```typescript
+import { Http } from '@shohaghinfo/aerojs';
+
+// 1. Fluent API calls
+const response = await Http.baseUrl('https://api.hospital-network.com/v1')
+  .withToken(process.env.API_KEY!)
+  .withQuery({ status: 'active', limit: 50 })
+  .timeout(5000)
+  .retry(3, 200)
+  .get('/patients');
+
+if (response.successful) {
+  const patients = response.json();
+  console.log('Patients fetched:', patients);
+}
+
+// 2. Testing Fakes (Mocking external services)
+Http.fake({
+  '/patients': [{ id: 1, name: 'Alice Smith' }],
+  '/billing': Http.response({ invoiceId: 'INV-101' }, 201),
+});
+
+const res = await Http.post('https://api.hospital-network.com/v1/billing', { amount: 500 });
+expect(res.status).toBe(201);
+
+Http.assertSent((req) => req.url.includes('/billing') && req.method === 'POST');
+```
 
 ---
 

@@ -143,6 +143,100 @@ export class MemoryRateLimitStore implements RateLimitStore {
   }
 }
 
+export interface RedisRateLimitStoreOptions {
+  client: any; // RedisClient
+  prefix?: string;
+  fallbackToMemory?: boolean;
+}
+
+/**
+ * Distributed, multi-instance Rate Limiter Store backed by Redis.
+ * Uses atomic INCR and TTL expiration to synchronize rate limits across server clusters.
+ */
+export class RedisRateLimitStore implements RateLimitStore {
+  private client: any;
+  private prefix: string;
+  private fallbackStore?: MemoryRateLimitStore;
+
+  constructor(options: RedisRateLimitStoreOptions) {
+    this.client = options.client;
+    this.prefix = options.prefix ?? 'rl:';
+    if (options.fallbackToMemory) {
+      this.fallbackStore = new MemoryRateLimitStore();
+    }
+  }
+
+  public async increment(key: string, windowMs: number): Promise<RateLimitInfo> {
+    const fullKey = `${this.prefix}${key}`;
+    try {
+      const hits = await this.client.incr(fullKey);
+      let ttl = await this.client.ttl(fullKey);
+      if (ttl === -1 || ttl === null) {
+        const sec = Math.max(1, Math.ceil(windowMs / 1000));
+        await this.client.expire(fullKey, sec);
+        ttl = sec;
+      }
+      const resetTime = Date.now() + Math.max(1, ttl) * 1000;
+      return { totalHits: hits, resetTime };
+    } catch (err) {
+      if (this.fallbackStore) {
+        return this.fallbackStore.increment(key, windowMs);
+      }
+      throw err;
+    }
+  }
+
+  public async decrement(key: string): Promise<void> {
+    const fullKey = `${this.prefix}${key}`;
+    try {
+      await this.client.decr(fullKey);
+    } catch (err) {
+      if (this.fallbackStore) {
+        this.fallbackStore.decrement(key);
+        return;
+      }
+      throw err;
+    }
+  }
+
+  public async resetKey(key: string): Promise<void> {
+    const fullKey = `${this.prefix}${key}`;
+    try {
+      await this.client.del(fullKey);
+    } catch (err) {
+      if (this.fallbackStore) {
+        this.fallbackStore.resetKey(key);
+        return;
+      }
+      throw err;
+    }
+  }
+
+  public async resetAll(): Promise<void> {
+    try {
+      const connection = typeof this.client.getRawConnection === 'function'
+        ? this.client.getRawConnection()
+        : this.client;
+      const keys: string[] = await connection.sendCommand(['KEYS', `${this.prefix}*`]);
+      if (keys && keys.length > 0) {
+        await this.client.del(...keys);
+      }
+    } catch (err) {
+      if (this.fallbackStore) {
+        this.fallbackStore.resetAll();
+        return;
+      }
+      throw err;
+    }
+  }
+
+  public destroy(): void {
+    if (this.fallbackStore) {
+      this.fallbackStore.destroy();
+    }
+  }
+}
+
 /**
  * Creates a Rate Limiter middleware for Aero applications.
  */

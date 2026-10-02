@@ -60,6 +60,7 @@ export {
   NotBeforeError,
   rateLimit,
   MemoryRateLimitStore,
+  RedisRateLimitStore,
   TooManyRequestsError,
   securityHeaders,
   csrf,
@@ -182,8 +183,10 @@ export {
   QueueWorker,
   MemoryQueueDriver,
   DatabaseQueueDriver,
+  RedisQueueDriver,
   type QueueDriver,
   type QueuedJobRecord,
+  type FailedJobDetails,
   type PushOptions,
   type WorkerOptions,
   type FailedJobRecord,
@@ -408,5 +411,6 @@ export * from './config/env-schema.js';
 
 export * from './tcp/index.js';
 export * from './webhook/index.js';
+export * from './http/index.js';
 
 

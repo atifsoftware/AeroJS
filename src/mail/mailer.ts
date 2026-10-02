@@ -9,12 +9,24 @@ import { MailMessage } from './message.js';
 import type { MailDriver, SentMailResult } from './drivers/mail-driver.js';
 import { MemoryMailDriver } from './drivers/memory-mail-driver.js';
 import { LogMailDriver } from './drivers/log-mail-driver.js';
+import { SmtpMailDriver, type SmtpConfig } from './drivers/smtp-mail-driver.js';
 import { Queue } from '../queue/queue-manager.js';
 import { Job } from '../queue/job.js';
 
+export interface MailerConnectionConfig {
+  driver: 'memory' | 'log' | 'smtp' | string;
+  smtp?: SmtpConfig;
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  auth?: { user: string; pass: string };
+  timeout?: number;
+  name?: string;
+}
+
 export interface MailerConfig {
   default?: string;
-  mailers?: Record<string, { driver: 'memory' | 'log' | string }>;
+  mailers?: Record<string, MailerConnectionConfig>;
 }
 
 export class SendEmailJob extends Job {
@@ -41,6 +53,7 @@ Queue.registerJob('SendEmailJob', SendEmailJob);
 
 export class MailManager {
   private defaultMailerName = 'memory';
+  private mailerConfigs = new Map<string, MailerConnectionConfig>();
   private mailers = new Map<string, MailDriver>();
   private isFaked = false;
   private memoryDriver = new MemoryMailDriver();
@@ -52,6 +65,11 @@ export class MailManager {
   public configure(config: MailerConfig): this {
     if (config.default) {
       this.defaultMailerName = config.default;
+    }
+    if (config.mailers) {
+      for (const [name, cfg] of Object.entries(config.mailers)) {
+        this.mailerConfigs.set(name, cfg);
+      }
     }
     return this;
   }
@@ -66,8 +84,23 @@ export class MailManager {
       return this.mailers.get(mailerName)!;
     }
 
+    const cfg = this.mailerConfigs.get(mailerName);
+    const driverType = cfg?.driver || mailerName;
+
     let instance: MailDriver;
-    switch (mailerName) {
+    switch (driverType) {
+      case 'smtp': {
+        const smtpOptions: SmtpConfig = cfg?.smtp || {
+          host: cfg?.host,
+          port: cfg?.port,
+          secure: cfg?.secure,
+          auth: cfg?.auth,
+          timeout: cfg?.timeout,
+          name: cfg?.name,
+        };
+        instance = new SmtpMailDriver(smtpOptions);
+        break;
+      }
       case 'log':
         instance = new LogMailDriver();
         break;
@@ -79,6 +112,13 @@ export class MailManager {
 
     this.mailers.set(mailerName, instance);
     return instance;
+  }
+
+  /**
+   * Helper to instantiate a standalone SmtpMailDriver.
+   */
+  public createSmtpDriver(config: SmtpConfig): SmtpMailDriver {
+    return new SmtpMailDriver(config);
   }
 
   /**

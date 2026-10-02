@@ -24,10 +24,12 @@ export {
 export {
   rateLimit,
   MemoryRateLimitStore,
+  RedisRateLimitStore,
   TooManyRequestsError,
   type RateLimitOptions,
   type RateLimitStore,
   type RateLimitInfo,
+  type RedisRateLimitStoreOptions,
 } from './rate-limiter.js';
 
 export {
