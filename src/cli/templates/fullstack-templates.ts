@@ -457,9 +457,6 @@ import { registerWebRoutes } from './routes/web.js';
 import { join } from 'node:path';
 import { initDatabase } from './database/init-db.js';
 
-// Initialize Database connection
-await initDatabase();
-
 const app = new AeroJS({
   debug: appConfig.debug,
   trustProxy: true,
@@ -474,12 +471,14 @@ app.serveStatic('/public', join(process.cwd(), 'public'));
 registerWebRoutes(app.router);
 registerApiRoutes(app.router);
 
-// Start server (only when not in test runner)
+// Start server
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(appConfig.port, () => {
-    console.log(\`\\n🚀 AeroJS Server running at http://localhost:\${appConfig.port}\`);
-    console.log(\`👉 API Documentation: http://localhost:\${appConfig.port}/docs\`);
-    console.log(\`👉 Health Check:       http://localhost:\${appConfig.port}/api/health\\n\`);
+  const port = process.env.PORT || appConfig.port;
+  initDatabase().catch((err) => console.error('[AeroJS] Database init error:', err));
+  app.listen(port, () => {
+    console.log(\`\\n🚀 AeroJS Server running at http://localhost:\${port}\`);
+    console.log(\`👉 API Documentation: http://localhost:\${port}/docs\`);
+    console.log(\`👉 Health Check:       http://localhost:\${port}/api/health\\n\`);
   });
 }
 

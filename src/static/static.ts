@@ -4,7 +4,7 @@
  */
 
 import { statSync, createReadStream, existsSync } from 'node:fs';
-import { resolve, join, extname, normalize } from 'node:path';
+import { resolve, join, extname, normalize, sep } from 'node:path';
 import type { Middleware } from '../core/types.js';
 import type { DefaultState } from '../core/context.js';
 
@@ -110,7 +110,8 @@ export function serveStatic<State = DefaultState>(options: StaticOptions): Middl
 
     // Defense-in-depth: Ensure resolved target never escapes rootDir
     const resolvedPath = resolve(filePath);
-    if (!resolvedPath.startsWith(rootDir)) {
+    const normalizedRoot = rootDir.endsWith(sep) ? rootDir : rootDir + sep;
+    if (resolvedPath !== rootDir && !resolvedPath.startsWith(normalizedRoot)) {
       return ctx.status(403).text('Forbidden: Directory traversal attempt');
     }
 

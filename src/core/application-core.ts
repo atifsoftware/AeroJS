@@ -641,14 +641,20 @@ export class ApplicationCore<State = DefaultState> {
       host = hostOrCallback;
     }
 
-    server.listen(port, host, cb);
+    if (typeof port === 'string' && isNaN(Number(port))) {
+      (server as any).listen(port, cb);
+    } else {
+      const numericPort = Number(port);
+      const targetPort = isNaN(numericPort) ? 3000 : numericPort;
+      server.listen(targetPort, host, cb);
+    }
     return server;
   }
 
-  public async listenAsync(port = 3000, host = '0.0.0.0'): Promise<Server> {
+  public async listenAsync(port: number | string = 3000, host = '0.0.0.0'): Promise<Server> {
     await this.boot();
     return new Promise((resolve, reject) => {
-      const server = this.listen(port, host, () => {
+      const server = this.listen(port as any, host, () => {
         resolve(server);
       });
       server.once('error', reject);

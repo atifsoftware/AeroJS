@@ -41,7 +41,7 @@ export function initProject(targetDirectory = '.', options: InitProjectOptions =
 
   // 1. package.json
   const dependencies: Record<string, string> = {
-    aerojs: 'npm:@shohaghinfo/aerojs@^0.1.1',
+    aerojs: 'npm:@shohaghinfo/aerojs@^0.4.4',
     knex: '^3.3.0',
     mysql2: '^3.11.0',
   };
@@ -375,9 +375,6 @@ import { registerWebRoutes } from './routes/web.js';
 import { join } from 'node:path';
 import { initDatabase } from './database/init-db.js';
 
-// Initialize Database connection
-await initDatabase();
-
 const app = new AeroJS({
   debug: appConfig.debug,
   trustProxy: true,
@@ -394,10 +391,12 @@ registerApiRoutes(app.router);
 
 // Start server (only when not in test runner)
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(appConfig.port, () => {
-    console.log(\`\\n🚀 AeroJS Server running at http://localhost:\${appConfig.port}\`);
-    console.log(\`👉 Health Check: http://localhost:\${appConfig.port}/api/health\`);
-    console.log(\`👉 Users API:   http://localhost:\${appConfig.port}/api/users\\n\`);
+  const port = process.env.PORT || appConfig.port;
+  initDatabase().catch((err) => console.error('[AeroJS] Database init error:', err));
+  app.listen(port, () => {
+    console.log(\`\\n🚀 AeroJS Server running at http://localhost:\${port}\`);
+    console.log(\`👉 Health Check: http://localhost:\${port}/api/health\`);
+    console.log(\`👉 Users API:   http://localhost:\${port}/api/users\\n\`);
   });
 }
 
