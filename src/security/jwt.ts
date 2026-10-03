@@ -9,7 +9,9 @@ import type { Middleware } from '../core/types.js';
 import type { AeroContext } from '../core/context.js';
 import { UnauthorizedError } from '../core/errors.js';
 
-export type JwtAlgorithm = 'HS256' | 'HS384' | 'HS512';
+export type JwtAlgorithm = 'HS256' | 'HS384' | 'HS512' | 'RS256' | 'ES256';
+
+export type JwtKey = string | Buffer | crypto.KeyObject;
 
 export interface JwtHeader {
   alg: JwtAlgorithm;
@@ -51,7 +53,7 @@ export interface JwtVerifyOptions {
 }
 
 export interface JwtAuthOptions {
-  secret: string | Buffer | ((header: JwtHeader, payload: JwtPayload) => Promise<string | Buffer> | string | Buffer);
+  secret: JwtKey | ((header: JwtHeader, payload: JwtPayload) => Promise<JwtKey> | JwtKey);
   algorithms?: JwtAlgorithm[];
   credentialsRequired?: boolean; // default: true
   userProperty?: string; // default: 'user' (attaches to ctx.state.user)
@@ -86,10 +88,15 @@ export class NotBeforeError extends JsonWebTokenError {
   }
 }
 
-const ALG_HASH_MAP: Record<JwtAlgorithm, string> = {
+const HMAC_ALGS: Record<string, string> = {
   HS256: 'sha256',
   HS384: 'sha384',
   HS512: 'sha512',
+};
+
+const ASYMMETRIC_ALGS: Record<string, { signAlg: string; dsaEncoding?: 'ieee-p1363' }> = {
+  RS256: { signAlg: 'RSA-SHA256' },
+  ES256: { signAlg: 'SHA256', dsaEncoding: 'ieee-p1363' },
 };
 
 /**
@@ -139,12 +146,67 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function createSignature(input: string, secret: string | Buffer, alg: JwtAlgorithm): string {
-  const hashAlg = ALG_HASH_MAP[alg];
-  if (!hashAlg) {
-    throw new JsonWebTokenError(`Unsupported algorithm: ${alg}`);
+function createSignature(input: string, key: JwtKey, alg: JwtAlgorithm): string {
+  if (HMAC_ALGS[alg]) {
+    const hashAlg = HMAC_ALGS[alg]!;
+    if (typeof key !== 'string' && !Buffer.isBuffer(key)) {
+      throw new JsonWebTokenError('HMAC algorithms require a string or Buffer secret');
+    }
+    return crypto.createHmac(hashAlg, key).update(input).digest('base64url');
   }
-  return crypto.createHmac(hashAlg, secret).update(input).digest('base64url');
+
+  const asym = ASYMMETRIC_ALGS[alg];
+  if (asym) {
+    try {
+      const inputBuffer = Buffer.from(input, 'utf-8');
+      const signOptions: { key: any; dsaEncoding?: 'der' | 'ieee-p1363' } = { key: key as any };
+      if (asym.dsaEncoding) {
+        signOptions.dsaEncoding = asym.dsaEncoding;
+      }
+      return crypto.sign(asym.signAlg, inputBuffer, signOptions).toString('base64url');
+    } catch (err) {
+      throw new JsonWebTokenError(`Failed to sign with ${alg}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  throw new JsonWebTokenError(`Unsupported algorithm: ${alg}`);
+}
+
+function verifySignature(input: string, signature: string, key: JwtKey, alg: JwtAlgorithm): boolean {
+  if (HMAC_ALGS[alg]) {
+    if (typeof key !== 'string' && !Buffer.isBuffer(key)) {
+      return false;
+    }
+    try {
+      const expectedSig = createSignature(input, key, alg);
+      return timingSafeEqual(signature, expectedSig);
+    } catch {
+      return false;
+    }
+  }
+
+  const asym = ASYMMETRIC_ALGS[alg];
+  if (asym) {
+    try {
+      const inputBuffer = Buffer.from(input, 'utf-8');
+      const sigBuffer = Buffer.from(signature, 'base64url');
+      const verifyOptions: { key: any; dsaEncoding?: 'der' | 'ieee-p1363' } = { key: key as any };
+      if (asym.dsaEncoding) {
+        verifyOptions.dsaEncoding = asym.dsaEncoding;
+      }
+      const valid = crypto.verify(asym.signAlg, inputBuffer, verifyOptions, sigBuffer);
+      if (valid) return true;
+      // Fallback for ES256 if signature was DER formatted
+      if (asym.dsaEncoding) {
+        return crypto.verify(asym.signAlg, inputBuffer, { key: key as any }, sigBuffer);
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -152,7 +214,7 @@ function createSignature(input: string, secret: string | Buffer, alg: JwtAlgorit
  */
 export function sign(
   payload: Record<string, unknown>,
-  secret: string | Buffer,
+  secret: JwtKey,
   options: JwtSignOptions = {}
 ): string {
   if (!secret) {
@@ -160,7 +222,7 @@ export function sign(
   }
 
   const alg = options.algorithm || 'HS256';
-  if (!ALG_HASH_MAP[alg]) {
+  if (!HMAC_ALGS[alg] && !ASYMMETRIC_ALGS[alg]) {
     throw new JsonWebTokenError(`Unsupported algorithm: ${alg}`);
   }
 
@@ -241,7 +303,7 @@ export function decode<T = JwtPayload>(
  */
 export function verify<T = JwtPayload>(
   token: string,
-  secret: string | Buffer,
+  secret: JwtKey,
   options: JwtVerifyOptions = {}
 ): T {
   if (typeof token !== 'string' || !token) {
@@ -274,16 +336,14 @@ export function verify<T = JwtPayload>(
   }
 
   // Algorithm check
-  const allowedAlgs = options.algorithms || ['HS256', 'HS384', 'HS512'];
+  const allowedAlgs = options.algorithms || ['HS256', 'HS384', 'HS512', 'RS256', 'ES256'];
   if (!allowedAlgs.includes(header.alg)) {
     throw new JsonWebTokenError(`invalid algorithm: ${header.alg}`);
   }
 
-  // Signature verification (timing safe)
+  // Signature verification (timing safe for HMAC, crypto.verify for RSA/ECDSA)
   const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const expectedSig = createSignature(signingInput, secret, header.alg);
-
-  if (!timingSafeEqual(signature, expectedSig)) {
+  if (!verifySignature(signingInput, signature, secret, header.alg)) {
     throw new JsonWebTokenError('invalid signature');
   }
 
@@ -391,7 +451,7 @@ export function jwtAuth<T = JwtPayload>(options: JwtAuthOptions): Middleware {
     }
 
     // Resolve secret
-    let secretKey: string | Buffer;
+    let secretKey: JwtKey;
     if (typeof options.secret === 'function') {
       const decoded = decode(token);
       if (!decoded) {

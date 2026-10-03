@@ -4,6 +4,7 @@ import type { IncomingMessage } from 'node:http';
 import {
   AeroWebSocket,
   handleWebSocketUpgrade,
+  fastUnmask,
 } from '../src/ws/websocket.js';
 import { Aero } from '../src/core/application.js';
 
@@ -187,6 +188,138 @@ describe('Zero-Dependency WebSocket Module', () => {
 
     const message = await messagePromise;
     expect(message).toBe('Hello');
+  });
+
+  describe('WebSocket Frame Processing & Buffer Optimization', () => {
+    it('fastUnmask correctly unmasks empty, small, and large payloads', () => {
+      const maskKey = Buffer.from([0x12, 0x34, 0x56, 0x78]);
+
+      // Empty payload
+      expect(fastUnmask(Buffer.alloc(0), maskKey)).toEqual(Buffer.alloc(0));
+
+      // Small payload
+      const text = 'Hello AeroJS WebSocket!';
+      const orig = Buffer.from(text, 'utf-8');
+      const masked = Buffer.allocUnsafe(orig.length);
+      for (let i = 0; i < orig.length; i++) {
+        masked[i] = orig[i]! ^ maskKey[i % 4]!;
+      }
+
+      const unmasked = fastUnmask(masked, maskKey);
+      expect(unmasked.toString('utf-8')).toBe(text);
+
+      // Large payload (64 KB)
+      const largeSize = 64 * 1024 + 3; // Test with remainder != 0
+      const largeOrig = Buffer.alloc(largeSize);
+      for (let i = 0; i < largeSize; i++) {
+        largeOrig[i] = (i * 31 + 7) & 0xff;
+      }
+      const largeMasked = Buffer.allocUnsafe(largeSize);
+      for (let i = 0; i < largeSize; i++) {
+        largeMasked[i] = largeOrig[i]! ^ maskKey[i % 4]!;
+      }
+
+      const largeUnmasked = fastUnmask(largeMasked, maskKey);
+      expect(largeUnmasked.equals(largeOrig)).toBe(true);
+    });
+
+    it('processes multiple frames concatenated in a single TCP chunk without fragmentation', async () => {
+      const socket = new MockDuplex();
+      const ws = new AeroWebSocket(socket);
+
+      const received: string[] = [];
+      ws.on('message', (msg) => {
+        received.push(String(msg));
+      });
+
+      // Frame A: "One" (3 bytes)
+      const maskA = Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]);
+      const payloadA = Buffer.from('One', 'utf-8');
+      const maskedA = Buffer.from([
+        payloadA[0]! ^ maskA[0]!,
+        payloadA[1]! ^ maskA[1]!,
+        payloadA[2]! ^ maskA[2]!,
+      ]);
+      const frameA = Buffer.concat([Buffer.from([0x81, 0x83]), maskA, maskedA]);
+
+      // Frame B: "Two" (3 bytes)
+      const maskB = Buffer.from([0x11, 0x22, 0x33, 0x44]);
+      const payloadB = Buffer.from('Two', 'utf-8');
+      const maskedB = Buffer.from([
+        payloadB[0]! ^ maskB[0]!,
+        payloadB[1]! ^ maskB[1]!,
+        payloadB[2]! ^ maskB[2]!,
+      ]);
+      const frameB = Buffer.concat([Buffer.from([0x81, 0x83]), maskB, maskedB]);
+
+      // Deliver both frames in a single 'data' event
+      socket.emit('data', Buffer.concat([frameA, frameB]));
+
+      expect(received).toEqual(['One', 'Two']);
+    });
+
+    it('cleans up socket event listeners and buffers on socket close event', () => {
+      const socket = new MockDuplex();
+      const ws = new AeroWebSocket(socket);
+
+      // Verify listeners attached
+      expect(socket.listenerCount('data')).toBe(1);
+      expect(socket.listenerCount('close')).toBe(1);
+      expect(socket.listenerCount('error')).toBe(1);
+      expect(socket.listenerCount('end')).toBe(1);
+
+      let closeEmitted = false;
+      ws.on('close', () => {
+        closeEmitted = true;
+      });
+
+      // Simulate socket drop / close
+      socket.emit('close');
+
+      expect(ws.isClosed).toBe(true);
+      expect(closeEmitted).toBe(true);
+
+      // Verify listeners removed to prevent memory leaks
+      expect(socket.listenerCount('data')).toBe(0);
+      expect(socket.listenerCount('close')).toBe(0);
+      expect(socket.listenerCount('error')).toBe(0);
+      expect(socket.listenerCount('end')).toBe(0);
+    });
+
+    it('cleans up socket event listeners on socket error event', () => {
+      const socket = new MockDuplex();
+      const ws = new AeroWebSocket(socket);
+
+      let errorReceived: Error | null = null;
+      ws.on('error', (err) => {
+        errorReceived = err;
+      });
+
+      // Simulate socket drop / network error
+      const testErr = new Error('ECONNRESET');
+      socket.emit('error', testErr);
+
+      expect(ws.isClosed).toBe(true);
+      expect(errorReceived).toBe(testErr);
+
+      // All socket listeners must be cleaned up
+      expect(socket.listenerCount('data')).toBe(0);
+      expect(socket.listenerCount('close')).toBe(0);
+      expect(socket.listenerCount('error')).toBe(0);
+      expect(socket.listenerCount('end')).toBe(0);
+    });
+
+    it('cleans up socket event listeners when destroy() is called', () => {
+      const socket = new MockDuplex();
+      const ws = new AeroWebSocket(socket);
+
+      ws.destroy();
+
+      expect(ws.isClosed).toBe(true);
+      expect(socket.isDestroyed).toBe(true);
+      expect(socket.listenerCount('data')).toBe(0);
+      expect(socket.listenerCount('close')).toBe(0);
+    });
   });
 });
 

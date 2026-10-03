@@ -48,6 +48,16 @@ export class Hash {
   }
 
   /**
+   * Alias for verify with (password, hash) argument ordering familiar to Laravel/Bcrypt users.
+   */
+  public static async check(passwordOrHash: string, hashOrPassword: string): Promise<boolean> {
+    if (passwordOrHash.startsWith('$scrypt$')) {
+      return this.verify(passwordOrHash, hashOrPassword);
+    }
+    return this.verify(hashOrPassword, passwordOrHash);
+  }
+
+  /**
    * Verifies a plaintext password against a stored scrypt hash using constant-time timingSafeEqual.
    */
   public static async verify(hash: string, password: string): Promise<boolean> {

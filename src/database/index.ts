@@ -13,6 +13,8 @@ export {
 
 export {
   QueryBuilder,
+  validateIdentifier,
+  quoteIdentifier,
   type WhereClause,
   type JoinClause,
   type PaginationResult,

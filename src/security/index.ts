@@ -14,6 +14,7 @@ export {
   TokenExpiredError,
   NotBeforeError,
   type JwtAlgorithm,
+  type JwtKey,
   type JwtHeader,
   type JwtPayload,
   type JwtSignOptions,

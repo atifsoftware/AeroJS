@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import crypto from 'node:crypto';
 import {
   jwt,
   sign,
@@ -271,6 +272,172 @@ describe('Zero-Dependency JWT Security Module', () => {
 
       expect(res.status).toBe(200);
       expect(res.json<any>().tenant).toBe('acme');
+    });
+  });
+
+  describe('Asymmetric Algorithms: RS256 & ES256 Support', () => {
+    // Generate test RSA key pair
+    const rsaKeys = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    const otherRsaKeys = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    // Generate test ECDSA key pair (P-256)
+    const ecKeys = crypto.generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    const otherEcKeys = crypto.generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    describe('RS256 (RSA-SHA256)', () => {
+      it('signs with RSA private key and verifies with RSA public key (PEM string)', () => {
+        const payload = { userId: 101, email: 'rsa@enterprise.dev', role: 'admin' };
+        const token = sign(payload, rsaKeys.privateKey, { algorithm: 'RS256' });
+
+        const decodedHeader = decode(token);
+        expect(decodedHeader?.header.alg).toBe('RS256');
+
+        const verified = verify<typeof payload>(token, rsaKeys.publicKey, { algorithms: ['RS256'] });
+        expect(verified.userId).toBe(101);
+        expect(verified.email).toBe('rsa@enterprise.dev');
+        expect(verified.role).toBe('admin');
+      });
+
+      it('supports signing and verification with crypto.KeyObject instances', () => {
+        const privateKeyObj = crypto.createPrivateKey(rsaKeys.privateKey);
+        const publicKeyObj = crypto.createPublicKey(rsaKeys.publicKey);
+
+        const token = sign({ sub: 'user_rsa_obj' }, privateKeyObj, { algorithm: 'RS256' });
+        const verified = verify<{ sub: string }>(token, publicKeyObj);
+        expect(verified.sub).toBe('user_rsa_obj');
+      });
+
+      it('rejects tampered RS256 token', () => {
+        const token = sign({ role: 'user' }, rsaKeys.privateKey, { algorithm: 'RS256' });
+        const parts = token.split('.');
+        const tamperedPayload = Buffer.from(JSON.stringify({ role: 'admin' })).toString('base64url');
+        const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
+
+        expect(() => verify(tamperedToken, rsaKeys.publicKey)).toThrow(JsonWebTokenError);
+        expect(() => verify(tamperedToken, rsaKeys.publicKey)).toThrow(/invalid signature/);
+      });
+
+      it('rejects RS256 token verified with wrong RSA public key', () => {
+        const token = sign({ user: 'charlie' }, rsaKeys.privateKey, { algorithm: 'RS256' });
+        expect(() => verify(token, otherRsaKeys.publicKey)).toThrow(/invalid signature/);
+      });
+    });
+
+    describe('ES256 (ECDSA-SHA256)', () => {
+      it('signs with ECDSA private key and verifies with ECDSA public key (PEM string)', () => {
+        const payload = { service: 'billing-service', scopes: ['read:invoices', 'write:invoices'] };
+        const token = sign(payload, ecKeys.privateKey, { algorithm: 'ES256' });
+
+        const decodedHeader = decode(token);
+        expect(decodedHeader?.header.alg).toBe('ES256');
+
+        const verified = verify<typeof payload>(token, ecKeys.publicKey, { algorithms: ['ES256'] });
+        expect(verified.service).toBe('billing-service');
+        expect(verified.scopes).toEqual(['read:invoices', 'write:invoices']);
+      });
+
+      it('supports signing and verification with EC KeyObject instances', () => {
+        const ecPrivateObj = crypto.createPrivateKey(ecKeys.privateKey);
+        const ecPublicObj = crypto.createPublicKey(ecKeys.publicKey);
+
+        const token = sign({ sub: 'ec_service' }, ecPrivateObj, { algorithm: 'ES256' });
+        const verified = verify<{ sub: string }>(token, ecPublicObj);
+        expect(verified.sub).toBe('ec_service');
+      });
+
+      it('rejects tampered ES256 token', () => {
+        const token = sign({ balance: 100 }, ecKeys.privateKey, { algorithm: 'ES256' });
+        const parts = token.split('.');
+        const tamperedPayload = Buffer.from(JSON.stringify({ balance: 999999 })).toString('base64url');
+        const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
+
+        expect(() => verify(tamperedToken, ecKeys.publicKey)).toThrow(JsonWebTokenError);
+        expect(() => verify(tamperedToken, ecKeys.publicKey)).toThrow(/invalid signature/);
+      });
+
+      it('rejects ES256 token verified with wrong EC public key', () => {
+        const token = sign({ user: 'dave' }, ecKeys.privateKey, { algorithm: 'ES256' });
+        expect(() => verify(token, otherEcKeys.publicKey)).toThrow(/invalid signature/);
+      });
+    });
+
+    describe('jwtAuth Middleware with Asymmetric Keys', () => {
+      it('authenticates incoming HTTP request using RSA public key', async () => {
+        const app = new Aero();
+        app.use(
+          jwtAuth({
+            secret: rsaKeys.publicKey,
+            algorithms: ['RS256'],
+          })
+        );
+        app.get('/protected', (ctx) => ctx.json({ success: true, user: ctx.state.user }));
+
+        const token = sign({ sub: 'admin-1', role: 'superadmin' }, rsaKeys.privateKey, { algorithm: 'RS256' });
+
+        const client = createTestClient(app);
+        const res = await client.get('/protected', {
+          headers: { authorization: `Bearer ${token}` },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json<any>().success).toBe(true);
+        expect(res.json<any>().user.sub).toBe('admin-1');
+      });
+
+      it('authenticates incoming HTTP request using ECDSA public key', async () => {
+        const app = new Aero();
+        app.use(
+          jwtAuth({
+            secret: ecKeys.publicKey,
+            algorithms: ['ES256'],
+          })
+        );
+        app.get('/ec-protected', (ctx) => ctx.json({ user: ctx.state.user }));
+
+        const token = sign({ sub: 'ec-client-42' }, ecKeys.privateKey, { algorithm: 'ES256' });
+
+        const client = createTestClient(app);
+        const res = await client.get('/ec-protected', {
+          headers: { authorization: `Bearer ${token}` },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json<any>().user.sub).toBe('ec-client-42');
+      });
+
+      it('returns 401 when token is signed with a different private key', async () => {
+        const app = new Aero();
+        app.use(jwtAuth({ secret: rsaKeys.publicKey, algorithms: ['RS256'] }));
+        app.get('/data', (ctx) => ctx.send('ok'));
+
+        // Sign with different key
+        const token = sign({ sub: 'attacker' }, otherRsaKeys.privateKey, { algorithm: 'RS256' });
+
+        const client = createTestClient(app);
+        const res = await client.get('/data', {
+          headers: { authorization: `Bearer ${token}` },
+        });
+
+        expect(res.status).toBe(401);
+      });
     });
   });
 });

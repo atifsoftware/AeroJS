@@ -67,7 +67,10 @@ export {
   Hash,
   hash,
   hashVerify,
+  UrlSigner,
+  validateSignedUrl,
   type JwtAlgorithm,
+  type JwtKey,
   type JwtHeader,
   type JwtPayload,
   type JwtSignOptions,
@@ -85,6 +88,7 @@ export {
 export {
   AeroWebSocket,
   handleWebSocketUpgrade,
+  fastUnmask,
   type WebSocketUpgradeHandler,
 } from './ws/websocket.js';
 export {
@@ -99,6 +103,8 @@ export {
   computed,
   encrypted,
   QueryBuilder,
+  validateIdentifier,
+  quoteIdentifier,
   Schema,
   TableBlueprint,
   Migrator,

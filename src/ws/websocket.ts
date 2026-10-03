@@ -20,6 +20,32 @@ export interface WebSocketOptions {
 }
 
 /**
+ * Fast, memory-safe unmasking of client frames.
+ * Uses 32-bit word-level XOR operations for high throughput and zero allocation overhead.
+ */
+export function fastUnmask(payload: Buffer, maskKey: Buffer): Buffer {
+  const len = payload.length;
+  if (len === 0) {
+    return Buffer.alloc(0);
+  }
+
+  const unmasked = Buffer.allocUnsafe(len);
+  const mask32 = maskKey.readInt32LE(0);
+  const remainder = len % 4;
+  const wordLimit = len - remainder;
+
+  for (let i = 0; i < wordLimit; i += 4) {
+    unmasked.writeInt32LE(payload.readInt32LE(i) ^ mask32, i);
+  }
+
+  for (let i = wordLimit; i < len; i++) {
+    unmasked[i] = payload[i]! ^ maskKey[i % 4]!;
+  }
+
+  return unmasked;
+}
+
+/**
  * Lightweight Zero-Dependency RFC 6455 WebSocket Connection wrapper over Duplex stream.
  */
 export class AeroWebSocket extends EventEmitter {
@@ -30,28 +56,81 @@ export class AeroWebSocket extends EventEmitter {
   private currentFragments: Buffer[] = [];
   private currentOpcode: number | null = null;
 
+  private onSocketData: (chunk: Buffer) => void;
+  private onSocketClose: () => void;
+  private onSocketError: (err: Error) => void;
+  private onSocketEnd: () => void;
+
   constructor(socket: Duplex, options: WebSocketOptions = {}) {
     super();
     this.socket = socket;
     this.maxPayload = options.maxPayload ?? 5 * 1024 * 1024; // 5MB default
 
-    this.socket.on('data', (chunk: Buffer) => {
-      this.buffer = Buffer.concat([this.buffer, chunk]);
+    this.onSocketData = (chunk: Buffer) => {
+      if (this.isClosed) return;
+      if (this.buffer.length === 0) {
+        this.buffer = chunk;
+      } else {
+        this.buffer = Buffer.concat([this.buffer, chunk]);
+      }
       if (this.buffer.length > this.maxPayload) {
         this.close(1009, 'Payload too large');
         return;
       }
       this.parseFrames();
-    });
+    };
 
-    this.socket.on('close', () => {
-      this.isClosed = true;
+    this.onSocketClose = () => {
+      this.cleanup();
       this.emit('close');
-    });
+    };
 
-    this.socket.on('error', (err) => {
+    this.onSocketError = (err: Error) => {
+      this.cleanup();
       this.emit('error', err);
-    });
+    };
+
+    this.onSocketEnd = () => {
+      this.cleanup();
+      this.emit('close');
+    };
+
+    this.socket.on('data', this.onSocketData);
+    this.socket.on('close', this.onSocketClose);
+    this.socket.on('error', this.onSocketError);
+    this.socket.on('end', this.onSocketEnd);
+  }
+
+  /**
+   * Cleans up internal buffers and removes all socket listeners to prevent memory leaks.
+   */
+  public cleanup(): void {
+    if (this.isClosed) return;
+    this.isClosed = true;
+
+    this.buffer = Buffer.alloc(0);
+    this.currentFragments = [];
+    this.currentOpcode = null;
+
+    if (this.socket) {
+      this.socket.removeListener('data', this.onSocketData);
+      this.socket.removeListener('close', this.onSocketClose);
+      this.socket.removeListener('error', this.onSocketError);
+      this.socket.removeListener('end', this.onSocketEnd);
+    }
+  }
+
+  /**
+   * Destroys the connection immediately and frees all resources.
+   */
+  public destroy(error?: Error): void {
+    this.cleanup();
+    if (this.socket && !this.socket.destroyed) {
+      this.socket.destroy(error);
+    }
+    if (error) {
+      this.emit('error', error);
+    }
   }
 
   /**
@@ -67,12 +146,12 @@ export class AeroWebSocket extends EventEmitter {
     if (length <= 125) {
       header = Buffer.from([0x81, length]);
     } else if (length <= 65535) {
-      header = Buffer.alloc(4);
+      header = Buffer.allocUnsafe(4);
       header[0] = 0x81;
       header[1] = 126;
       header.writeUInt16BE(length, 2);
     } else {
-      header = Buffer.alloc(10);
+      header = Buffer.allocUnsafe(10);
       header[0] = 0x81;
       header[1] = 127;
       header.writeBigUInt64BE(BigInt(length), 2);
@@ -86,25 +165,33 @@ export class AeroWebSocket extends EventEmitter {
    */
   public close(code = 1000, reason = ''): void {
     if (this.isClosed) return;
-    this.isClosed = true;
 
-    const reasonBuf = Buffer.from(reason, 'utf-8');
-    const payload = Buffer.alloc(2 + reasonBuf.length);
-    payload.writeUInt16BE(code, 0);
-    reasonBuf.copy(payload, 2);
+    try {
+      const reasonBuf = Buffer.from(reason, 'utf-8');
+      const payload = Buffer.allocUnsafe(2 + reasonBuf.length);
+      payload.writeUInt16BE(code, 0);
+      reasonBuf.copy(payload, 2);
 
-    const header = Buffer.from([0x88, payload.length]);
-    this.socket.write(Buffer.concat([header, payload]));
-    this.socket.end();
+      const header = Buffer.from([0x88, payload.length]);
+      this.socket.write(Buffer.concat([header, payload]));
+      this.socket.end();
+    } catch {
+      // Ignore write errors on closing stream
+    } finally {
+      this.cleanup();
+    }
   }
 
   /**
    * Internal RFC 6455 frame parser for incoming client messages (which must be masked).
+   * Optimized with single buffer slicing and 32-bit word unmasking.
    */
   private parseFrames(): void {
-    while (this.buffer.length >= 2) {
-      const firstByte = this.buffer[0]!;
-      const secondByte = this.buffer[1]!;
+    let offset = 0;
+
+    while (this.buffer.length - offset >= 2) {
+      const firstByte = this.buffer[offset]!;
+      const secondByte = this.buffer[offset + 1]!;
 
       const isFin = (firstByte & 0x80) === 0x80;
       const opcode = firstByte & 0x0f;
@@ -118,16 +205,16 @@ export class AeroWebSocket extends EventEmitter {
       }
 
       let payloadLength = secondByte & 0x7f;
-      let offset = 2;
+      let headerSize = 2;
 
       if (payloadLength === 126) {
-        if (this.buffer.length < 4) return;
-        payloadLength = this.buffer.readUInt16BE(2);
-        offset = 4;
+        if (this.buffer.length - offset < 4) break;
+        payloadLength = this.buffer.readUInt16BE(offset + 2);
+        headerSize = 4;
       } else if (payloadLength === 127) {
-        if (this.buffer.length < 10) return;
-        payloadLength = Number(this.buffer.readBigUInt64BE(2));
-        offset = 10;
+        if (this.buffer.length - offset < 10) break;
+        payloadLength = Number(this.buffer.readBigUInt64BE(offset + 2));
+        headerSize = 10;
       }
 
       if (payloadLength > this.maxPayload) {
@@ -136,31 +223,25 @@ export class AeroWebSocket extends EventEmitter {
       }
 
       const maskLength = 4;
-      const totalLength = offset + maskLength + payloadLength;
+      const totalLength = headerSize + maskLength + payloadLength;
 
-      if (this.buffer.length < totalLength) {
+      if (this.buffer.length - offset < totalLength) {
         // Incomplete frame, wait for more data
-        return;
+        break;
       }
 
-      const maskKey = this.buffer.subarray(offset, offset + 4);
-      offset += 4;
+      const maskKey = this.buffer.subarray(offset + headerSize, offset + headerSize + 4);
+      const payloadData = this.buffer.subarray(offset + headerSize + 4, offset + totalLength);
+      const unmaskedPayload = fastUnmask(payloadData, maskKey);
 
-      const payloadData = this.buffer.subarray(offset, offset + payloadLength);
-      const unmaskedPayload = Buffer.alloc(payloadLength);
-
-      for (let i = 0; i < payloadLength; i++) {
-        unmaskedPayload[i] = payloadData[i]! ^ maskKey[i % 4]!;
-      }
-
-      this.buffer = this.buffer.subarray(totalLength);
+      offset += totalLength;
 
       // Handle Control Frames (Ping: 0x9, Pong: 0xA, Close: 0x8)
       if (opcode === 0x8) {
         // Close frame
         this.close();
         this.emit('close');
-        return;
+        break;
       } else if (opcode === 0x9) {
         // Ping -> respond with Pong
         const pongHeader = Buffer.from([0x8a, 0x00]);
@@ -200,6 +281,14 @@ export class AeroWebSocket extends EventEmitter {
             this.emit('message', fullBuffer);
           }
         }
+      }
+    }
+
+    if (offset > 0) {
+      if (offset >= this.buffer.length) {
+        this.buffer = Buffer.alloc(0);
+      } else {
+        this.buffer = this.buffer.subarray(offset);
       }
     }
   }

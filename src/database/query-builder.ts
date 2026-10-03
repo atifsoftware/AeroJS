@@ -7,6 +7,85 @@
 import type { DatabaseAdapter, DatabaseRow } from './connection.js';
 import { Database, MemoryDatabaseAdapter } from './connection.js';
 
+/**
+ * Validates a SQL identifier (table name, column name, or alias) to prevent SQL injection.
+ * Supports /^[a-zA-Z0-9_.*]+$/ and alias 'as' patterns.
+ */
+export function validateIdentifier(identifier: string): string {
+  const trimmed = String(identifier || '').trim();
+  if (!trimmed) {
+    throw new Error('Security Violation: SQL identifier cannot be empty');
+  }
+
+  // Handle alias pattern e.g., "column as alias" or "table.column AS alias"
+  const asMatch = trimmed.match(/^(.+?)\s+as\s+(.+)$/i);
+  if (asMatch) {
+    const expr = asMatch[1]!.trim();
+    const alias = asMatch[2]!.trim();
+    validateIdentifierPart(expr, true);
+    validateIdentifierPart(alias, false);
+    return trimmed;
+  }
+
+  validateIdentifierPart(trimmed, true);
+  return trimmed;
+}
+
+function validateIdentifierPart(part: string, allowStar: boolean): void {
+  // Allow segments separated by dots: e.g., table.column or schema.table.column
+  const segments = part.split('.');
+  for (let i = 0; i < segments.length; i++) {
+    let seg = segments[i]!.trim();
+    if ((seg.startsWith('`') && seg.endsWith('`')) || (seg.startsWith('"') && seg.endsWith('"'))) {
+      seg = seg.slice(1, -1);
+    }
+    if (allowStar && seg === '*') {
+      continue;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(seg)) {
+      throw new Error(`Security Violation: Invalid identifier: "${part}"`);
+    }
+  }
+}
+
+/**
+ * Dialect-aware column and table identifier quoting to prevent injection and keyword collisions.
+ * MySQL: `backtick`
+ * PostgreSQL / SQLite: "double quote"
+ */
+export function quoteIdentifier(identifier: string, dialect?: string): string {
+  validateIdentifier(identifier);
+  const d = String(dialect || '').toLowerCase();
+  const isMysql = d.includes('mysql');
+  const isPgOrSqlite = d.includes('pg') || d.includes('postgres') || d.includes('sqlite');
+
+  if (!isMysql && !isPgOrSqlite) {
+    return identifier;
+  }
+
+  const quoteChar = isMysql ? '`' : '"';
+
+  // Alias pattern: "col as alias" -> "`col` AS `alias`" or `"col" AS "alias"`
+  const asMatch = identifier.trim().match(/^(.+?)\s+as\s+(.+)$/i);
+  if (asMatch) {
+    const expr = quoteIdentifier(asMatch[1]!.trim(), dialect);
+    const alias = quoteIdentifier(asMatch[2]!.trim(), dialect);
+    return `${expr} AS ${alias}`;
+  }
+
+  const segments = identifier.trim().split('.');
+  const quoted = segments.map((seg) => {
+    let s = seg.trim();
+    if ((s.startsWith('`') && s.endsWith('`')) || (s.startsWith('"') && s.endsWith('"'))) {
+      s = s.slice(1, -1);
+    }
+    if (s === '*') return '*';
+    return `${quoteChar}${s}${quoteChar}`;
+  });
+
+  return quoted.join('.');
+}
+
 export interface WhereClause {
   type: 'and' | 'or';
   column: string;
@@ -32,6 +111,9 @@ export interface PaginationResult<T> {
 }
 
 export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
+  public static validateIdentifier = validateIdentifier;
+  public static quoteIdentifier = quoteIdentifier;
+
   public tableName: string;
   protected adapter: DatabaseAdapter;
 
@@ -48,10 +130,28 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   public _eagerLoads: string[] = [];
   protected preferWriteConnection = false;
   protected customReadAdapter?: DatabaseAdapter;
+  protected shouldQuote = false;
 
   constructor(tableName: string, adapter: DatabaseAdapter) {
+    validateIdentifier(tableName);
     this.tableName = tableName;
     this.adapter = adapter;
+  }
+
+  /**
+   * Enables or disables automatic dialect-aware identifier quoting for this query.
+   */
+  public quoteIdentifiers(enable = true): this {
+    this.shouldQuote = enable;
+    return this;
+  }
+
+  public validateIdentifier(identifier: string): string {
+    return validateIdentifier(identifier);
+  }
+
+  public quoteIdentifier(identifier: string, dialect?: string): string {
+    return quoteIdentifier(identifier, dialect || this.resolveReadAdapter().dialect);
   }
 
   /**
@@ -94,6 +194,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     copy.preferWriteConnection = this.preferWriteConnection;
     copy.customReadAdapter = this.customReadAdapter;
     copy.lockMode = this.lockMode;
+    copy.shouldQuote = this.shouldQuote;
     return copy;
   }
 
@@ -121,6 +222,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
 
   public select(...columns: string[]): this {
     if (columns.length > 0) {
+      columns.forEach(validateIdentifier);
       this.columns = columns;
     }
     return this;
@@ -131,12 +233,23 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     operatorOrValue: unknown,
     value?: unknown
   ): this {
+    validateIdentifier(column);
     let operator = '=';
     let val = operatorOrValue;
 
     if (value !== undefined) {
-      operator = String(operatorOrValue).toUpperCase();
+      operator = String(operatorOrValue).toUpperCase().trim();
       val = value;
+    }
+
+    const validOperators = [
+      '=', '!=', '<>', '>', '<', '>=', '<=',
+      'LIKE', 'NOT LIKE', 'ILIKE', 'NOT ILIKE',
+      'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN',
+      'IS', 'IS NOT', '=='
+    ];
+    if (!validOperators.includes(operator)) {
+      throw new Error(`Security Violation: Unsupported operator in where: "${operator}"`);
     }
 
     this.whereClauses.push({
@@ -153,12 +266,23 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     operatorOrValue: unknown,
     value?: unknown
   ): this {
+    validateIdentifier(column);
     let operator = '=';
     let val = operatorOrValue;
 
     if (value !== undefined) {
-      operator = String(operatorOrValue).toUpperCase();
+      operator = String(operatorOrValue).toUpperCase().trim();
       val = value;
+    }
+
+    const validOperators = [
+      '=', '!=', '<>', '>', '<', '>=', '<=',
+      'LIKE', 'NOT LIKE', 'ILIKE', 'NOT ILIKE',
+      'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN',
+      'IS', 'IS NOT', '=='
+    ];
+    if (!validOperators.includes(operator)) {
+      throw new Error(`Security Violation: Unsupported operator in orWhere: "${operator}"`);
     }
 
     this.whereClauses.push({
@@ -214,11 +338,13 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   }
 
   public groupBy(...columns: string[]): this {
+    columns.forEach(validateIdentifier);
     this.groupClauses.push(...columns);
     return this;
   }
 
   public having(column: string, operator: string, value: unknown): this {
+    validateIdentifier(column);
     const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE'];
     const op = operator.toUpperCase().trim();
     if (!validOperators.includes(op)) {
@@ -228,35 +354,56 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     return this;
   }
 
-  public join(table: string, first: string, operator: string, second: string): this {
+  public join(table: string, first: string, operatorOrSecond: string, maybeSecond?: string): this {
+    validateIdentifier(table);
+    validateIdentifier(first);
+    let op = '=';
+    let second = operatorOrSecond;
+
+    if (maybeSecond !== undefined) {
+      op = operatorOrSecond.trim();
+      second = maybeSecond;
+    }
+
+    validateIdentifier(second);
     const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<='];
-    const op = operator.trim();
     if (!validOperators.includes(op)) {
-      throw new Error(`Security Violation: Unsupported operator in join: "${operator}"`);
+      throw new Error(`Security Violation: Unsupported operator in join: "${op}"`);
     }
     this.joinClauses.push({ type: 'inner', table, first, operator: op, second });
     return this;
   }
 
-  public leftJoin(table: string, first: string, operator: string, second: string): this {
+  public leftJoin(table: string, first: string, operatorOrSecond: string, maybeSecond?: string): this {
+    validateIdentifier(table);
+    validateIdentifier(first);
+    let op = '=';
+    let second = operatorOrSecond;
+
+    if (maybeSecond !== undefined) {
+      op = operatorOrSecond.trim();
+      second = maybeSecond;
+    }
+
+    validateIdentifier(second);
     const validOperators = ['=', '!=', '<>', '>', '<', '>=', '<='];
-    const op = operator.trim();
     if (!validOperators.includes(op)) {
-      throw new Error(`Security Violation: Unsupported operator in leftJoin: "${operator}"`);
+      throw new Error(`Security Violation: Unsupported operator in leftJoin: "${op}"`);
     }
     this.joinClauses.push({ type: 'left', table, first, operator: op, second });
     return this;
   }
 
   public orderBy(column: string, direction: 'asc' | 'desc' | 'ASC' | 'DESC' = 'ASC'): this {
-    const cleanDir = String(direction).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
     const trimmedCol = column.trim();
-    if (!/^[a-zA-Z0-9_.]+$/.test(trimmedCol) && !/^`[a-zA-Z0-9_.]+`$/.test(trimmedCol) && !/^"[a-zA-Z0-9_.]+"$/.test(trimmedCol)) {
-      throw new Error(`Security Violation: Invalid column identifier in orderBy: "${column}"`);
+    validateIdentifier(trimmedCol);
+    const dirUpper = String(direction || 'ASC').trim().toUpperCase();
+    if (dirUpper !== 'ASC' && dirUpper !== 'DESC') {
+      throw new Error(`Security Violation: Invalid order direction in orderBy: "${direction}". Allowed directions are ASC or DESC.`);
     }
     this.orderClauses.push({
       column: trimmedCol,
-      direction: cleanDir,
+      direction: dirUpper as 'ASC' | 'DESC',
     });
     return this;
   }
@@ -283,11 +430,15 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   /**
    * Compiles where clauses into a standalone SQL WHERE fragment and parameter bindings.
    */
-  public compileWhere(): { sql: string; bindings: unknown[] } {
+  public compileWhere(options?: { quote?: boolean }): { sql: string; bindings: unknown[] } {
     const bindings: unknown[] = [];
     if (this.whereClauses.length === 0) {
       return { sql: '', bindings };
     }
+
+    const quote = options?.quote ?? this.shouldQuote;
+    const dialect = this.resolveReadAdapter().dialect;
+    const q = (id: string) => (quote ? this.quoteIdentifier(id, dialect) : id);
 
     const parts = this.whereClauses.map((clause, idx) => {
       const prefix = idx > 0 ? `${clause.type.toUpperCase()} ` : '';
@@ -297,20 +448,21 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
         }
         return `${prefix}${clause.column}`;
       }
+      const col = q(clause.column);
       if ((clause.operator === 'IN' || clause.operator === 'NOT IN') && Array.isArray(clause.value)) {
         const placeholders = clause.value.map(() => '?').join(', ');
         bindings.push(...clause.value);
-        return `${prefix}${clause.column} ${clause.operator} (${placeholders})`;
+        return `${prefix}${col} ${clause.operator} (${placeholders})`;
       }
       if ((clause.operator === 'BETWEEN' || clause.operator === 'NOT BETWEEN') && Array.isArray(clause.value)) {
         bindings.push(clause.value[0], clause.value[1]);
-        return `${prefix}${clause.column} ${clause.operator} ? AND ?`;
+        return `${prefix}${col} ${clause.operator} ? AND ?`;
       }
       if (clause.value === null) {
-        return `${prefix}${clause.column} ${clause.operator} NULL`;
+        return `${prefix}${col} ${clause.operator} NULL`;
       }
       bindings.push(clause.value);
-      return `${prefix}${clause.column} ${clause.operator} ?`;
+      return `${prefix}${col} ${clause.operator} ?`;
     });
 
     return { sql: ` WHERE ${parts.join(' ')}`, bindings };
@@ -319,18 +471,22 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   /**
    * Compiles the current builder state to raw SQL and bindings.
    */
-  public toSQL(): { sql: string; bindings: unknown[] } {
+  public toSQL(options?: { quote?: boolean }): { sql: string; bindings: unknown[] } {
     const bindings: unknown[] = [];
-    let sql = `SELECT ${this.isDistinct ? 'DISTINCT ' : ''}${this.columns.join(', ')} FROM ${this.tableName}`;
+    const quote = options?.quote ?? this.shouldQuote;
+    const dialect = this.resolveReadAdapter().dialect;
+    const q = (id: string) => (quote ? this.quoteIdentifier(id, dialect) : id);
+
+    let sql = `SELECT ${this.isDistinct ? 'DISTINCT ' : ''}${this.columns.map(q).join(', ')} FROM ${q(this.tableName)}`;
 
     // Joins
     for (const join of this.joinClauses) {
       const joinType = join.type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
-      sql += ` ${joinType} ${join.table} ON ${join.first} ${join.operator} ${join.second}`;
+      sql += ` ${joinType} ${q(join.table)} ON ${q(join.first)} ${join.operator} ${q(join.second)}`;
     }
 
     // Wheres
-    const where = this.compileWhere();
+    const where = this.compileWhere({ quote });
     if (where.sql) {
       sql += where.sql;
       bindings.push(...where.bindings);
@@ -338,7 +494,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
 
     // Group By
     if (this.groupClauses.length > 0) {
-      sql += ` GROUP BY ${this.groupClauses.join(', ')}`;
+      sql += ` GROUP BY ${this.groupClauses.map(q).join(', ')}`;
     }
 
     // Having
@@ -346,14 +502,14 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       const havingParts = this.havingClauses.map((h, i) => {
         const pfx = i > 0 ? 'AND ' : '';
         bindings.push(h.value);
-        return `${pfx}${h.column} ${h.operator} ?`;
+        return `${pfx}${q(h.column)} ${h.operator} ?`;
       });
       sql += ` HAVING ${havingParts.join(' ')}`;
     }
 
     // Order By
     if (this.orderClauses.length > 0) {
-      const orders = this.orderClauses.map((o) => `${o.column} ${o.direction}`).join(', ');
+      const orders = this.orderClauses.map((o) => `${q(o.column)} ${o.direction}`).join(', ');
       sql += ` ORDER BY ${orders}`;
     }
 
@@ -368,11 +524,11 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     // Pessimistic Locking
     if (this.lockMode) {
       const adapter = this.resolveReadAdapter();
-      const dialect = String(adapter.dialect || '').toLowerCase();
+      const d = String(adapter.dialect || '').toLowerCase();
       if (this.lockMode === 'FOR UPDATE') {
         sql += ' FOR UPDATE';
       } else if (this.lockMode === 'SHARE') {
-        sql += dialect.includes('mysql') ? ' LOCK IN SHARE MODE' : ' FOR SHARE';
+        sql += d.includes('mysql') ? ' LOCK IN SHARE MODE' : ' FOR SHARE';
       }
     }
 
@@ -382,9 +538,12 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   /**
    * Executes query and returns array of records.
    */
-  public async get(): Promise<T[]> {
-    const adapter = this.resolveReadAdapter();
-    if (adapter instanceof MemoryDatabaseAdapter) {
+  public async get(adapterOrName?: DatabaseAdapter | string): Promise<T[]> {
+    let adapter = this.resolveReadAdapter();
+    if (adapterOrName) {
+      adapter = typeof adapterOrName === 'string' ? Database.getAdapter(adapterOrName) : adapterOrName;
+    }
+    if (adapter instanceof MemoryDatabaseAdapter || (adapter as any).getTableData) {
       return this.executeInMemory(adapter);
     }
     const { sql, bindings } = this.toSQL();
@@ -411,10 +570,24 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
   /**
    * Counts the matching records.
    */
-  public async count(column = '*'): Promise<number> {
-    const adapter = this.resolveReadAdapter();
-    if (adapter instanceof MemoryDatabaseAdapter) {
-      const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
+  public async count(columnOrAdapter: string | unknown = '*'): Promise<number> {
+    let column = '*';
+    let targetAdapter: DatabaseAdapter | undefined;
+
+    if (typeof columnOrAdapter === 'object' && columnOrAdapter !== null) {
+      targetAdapter = columnOrAdapter as DatabaseAdapter;
+    } else if (typeof columnOrAdapter === 'string') {
+      if (columnOrAdapter !== '*' && Database.getAdapter(columnOrAdapter) && Database.getAdapter(columnOrAdapter) !== Database.getAdapter('default')) {
+        targetAdapter = Database.getAdapter(columnOrAdapter);
+      } else {
+        column = columnOrAdapter;
+        validateIdentifier(column);
+      }
+    }
+
+    const adapter = targetAdapter || this.resolveReadAdapter();
+    if (adapter instanceof MemoryDatabaseAdapter || (adapter as any).getTableData) {
+      const rows = this.filterMemoryRows((adapter as any).getTableData(this.tableName));
       return rows.length;
     }
     const { sql: whereSql, bindings } = this.compileWhere();
@@ -432,6 +605,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Sums the given column.
    */
   public async sum(column: string): Promise<number> {
+    validateIdentifier(column);
     const adapter = this.resolveReadAdapter();
     if (adapter instanceof MemoryDatabaseAdapter) {
       const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
@@ -452,6 +626,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Calculates the average of the given column.
    */
   public async avg(column: string): Promise<number> {
+    validateIdentifier(column);
     const adapter = this.resolveReadAdapter();
     if (adapter instanceof MemoryDatabaseAdapter) {
       const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
@@ -474,6 +649,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Finds the minimum value of the given column.
    */
   public async min(column: string): Promise<number | null> {
+    validateIdentifier(column);
     const adapter = this.resolveReadAdapter();
     if (adapter instanceof MemoryDatabaseAdapter) {
       const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
@@ -495,6 +671,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Finds the maximum value of the given column.
    */
   public async max(column: string): Promise<number | null> {
+    validateIdentifier(column);
     const adapter = this.resolveReadAdapter();
     if (adapter instanceof MemoryDatabaseAdapter) {
       const rows = this.filterMemoryRows(adapter.getTableData(this.tableName));
@@ -526,6 +703,7 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    * Plucks an array of single column values from matching records.
    */
   public async pluck<K extends keyof T>(column: K): Promise<T[K][]> {
+    validateIdentifier(String(column));
     const qb = this.clone();
     qb.columns = [String(column)];
     const rows = await qb.get();
@@ -540,6 +718,9 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
     if (records.length === 0) return { affectedRows: 0 };
     const adapter = this.resolveWriteAdapter();
 
+    const keys = Object.keys(records[0]!);
+    keys.forEach(validateIdentifier);
+
     if (adapter instanceof MemoryDatabaseAdapter) {
       const tableRows = adapter.getTableData(this.tableName);
       const defaults = Database.tableDefaults.get(this.tableName) || {};
@@ -553,7 +734,6 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       return { insertId: lastId, affectedRows: records.length };
     }
 
-    const keys = Object.keys(records[0]!);
     const cols = keys.join(', ');
     const rowPlaceholders = `(${keys.map(() => '?').join(', ')})`;
     const allPlaceholders = records.map(() => rowPlaceholders).join(', ');
@@ -579,6 +759,8 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
    */
   public async update(data: Partial<T>): Promise<number> {
     const adapter = this.resolveWriteAdapter();
+    const keys = Object.keys(data);
+    keys.forEach(validateIdentifier);
 
     if (adapter instanceof MemoryDatabaseAdapter) {
       const tableRows = adapter.getTableData(this.tableName);
@@ -592,7 +774,6 @@ export class QueryBuilder<T extends DatabaseRow = DatabaseRow> {
       return updatedCount;
     }
 
-    const keys = Object.keys(data);
     const setClause = keys.map((k) => `${k} = ?`).join(', ');
     const setBindings = keys.map((k) => (data as any)[k]);
     const { sql: whereSql, bindings: whereBindings } = this.compileWhere();

@@ -4,6 +4,8 @@ import {
   Model,
   Schema,
   Migrator,
+  validateIdentifier,
+  quoteIdentifier,
   type Migration,
 } from '../src/database/index.js';
 import { NotFoundError } from '../src/core/errors.js';
@@ -361,6 +363,99 @@ describe('AeroJS Database & Active Record ORM (Step 1)', () => {
 
       expect(rolledBack).toHaveLength(2);
       expect(await migrator.getExecutedMigrations()).toHaveLength(0);
+    });
+  });
+
+  describe('SQL QueryBuilder Identifier Sanitization & Dialect Quoting', () => {
+    it('validates safe table, column, and alias identifiers', () => {
+      expect(validateIdentifier('users')).toBe('users');
+      expect(validateIdentifier('id')).toBe('id');
+      expect(validateIdentifier('created_at')).toBe('created_at');
+      expect(validateIdentifier('*')).toBe('*');
+      expect(validateIdentifier('users.*')).toBe('users.*');
+      expect(validateIdentifier('users.name')).toBe('users.name');
+      expect(validateIdentifier('users.name as user_name')).toBe('users.name as user_name');
+      expect(validateIdentifier('id AS user_id')).toBe('id AS user_id');
+      expect(validateIdentifier('`users`.`id`')).toBe('`users`.`id`');
+      expect(validateIdentifier('"users"."id"')).toBe('"users"."id"');
+    });
+
+    it('rejects malicious SQL injection attempts in identifiers', () => {
+      expect(() => validateIdentifier('')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('users; DROP TABLE users;')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('id UNION SELECT * FROM passwords')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('name--')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('1=1')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('users.name;')).toThrow(/Security Violation/);
+      expect(() => validateIdentifier('id) OR (1=1')).toThrow(/Security Violation/);
+    });
+
+    it('enforces identifier sanitization across QueryBuilder clauses', () => {
+      expect(() => DB.table('users; DROP TABLE users;')).toThrow(/Security Violation/);
+      expect(() => DB.table('users').select('id; DROP TABLE users')).toThrow(/Security Violation/);
+      expect(() => DB.table('users').where('id; DROP TABLE users', 1)).toThrow(/Security Violation/);
+      expect(() => DB.table('users').where('id', '; DROP TABLE users', 1)).toThrow(/Security Violation/);
+      expect(() => DB.table('users').orWhere('id; DROP TABLE users', 1)).toThrow(/Security Violation/);
+      expect(() => DB.table('users').groupBy('id; DROP TABLE users')).toThrow(/Security Violation/);
+      expect(() => DB.table('users').having('total; DROP TABLE', '=', 100)).toThrow(/Security Violation/);
+      expect(() => DB.table('users').join('posts; DROP TABLE', 'posts.id', '=', 'users.id')).toThrow(/Security Violation/);
+      expect(() => DB.table('users').leftJoin('posts', 'posts.id; DROP', '=', 'users.id')).toThrow(/Security Violation/);
+    });
+
+    it('strictly whitelists orderBy direction and blocks injection', () => {
+      const qb = DB.table('users');
+      expect(() => qb.orderBy('id', 'ASC')).not.toThrow();
+      expect(() => qb.orderBy('name', 'desc')).not.toThrow();
+      expect(() => qb.orderBy('created_at', 'DESC')).not.toThrow();
+      expect(() => qb.orderBy('id', 'asc')).not.toThrow();
+
+      // Invalid direction values
+      expect(() => qb.orderBy('id', 'INVALID' as any)).toThrow(/Security Violation.*Allowed directions are ASC or DESC/);
+      expect(() => qb.orderBy('id', 'ASC; DROP TABLE users;' as any)).toThrow(/Security Violation/);
+      expect(() => qb.orderBy('id', 'DESC--' as any)).toThrow(/Security Violation/);
+    });
+
+    it('quotes identifiers safely according to dialect (MySQL backtick, Postgres/SQLite double-quote)', () => {
+      // MySQL
+      expect(quoteIdentifier('users', 'mysql')).toBe('`users`');
+      expect(quoteIdentifier('users.id', 'mysql2')).toBe('`users`.`id`');
+      expect(quoteIdentifier('users.name as user_name', 'mysql')).toBe('`users`.`name` AS `user_name`');
+      expect(quoteIdentifier('users.*', 'mysql')).toBe('`users`.*');
+      expect(quoteIdentifier('*', 'mysql')).toBe('*');
+
+      // PostgreSQL
+      expect(quoteIdentifier('users', 'postgres')).toBe('"users"');
+      expect(quoteIdentifier('users.id', 'pg')).toBe('"users"."id"');
+      expect(quoteIdentifier('users.name as user_name', 'postgresql')).toBe('"users"."name" AS "user_name"');
+      expect(quoteIdentifier('users.*', 'postgres')).toBe('"users".*');
+      expect(quoteIdentifier('*', 'pg')).toBe('*');
+
+      // SQLite
+      expect(quoteIdentifier('users.id', 'sqlite3')).toBe('"users"."id"');
+      expect(quoteIdentifier('id as user_id', 'sqlite')).toBe('"id" AS "user_id"');
+
+      // Memory (unquoted by default)
+      expect(quoteIdentifier('users.name', 'memory')).toBe('users.name');
+
+      // Does not double quote
+      expect(quoteIdentifier('`users`.`id`', 'mysql')).toBe('`users`.`id`');
+      expect(quoteIdentifier('"users"."id"', 'postgres')).toBe('"users"."id"');
+    });
+
+    it('compiles dialect-quoted SQL via quoteIdentifiers() in QueryBuilder', () => {
+      const qb = DB.table('users')
+        .select('id', 'name as full_name')
+        .where('role', 'admin')
+        .orderBy('created_at', 'DESC');
+
+      // When quoting enabled
+      const quotedMysql = qb.clone().quoteIdentifiers(true).toSQL();
+      expect(quotedMysql.sql).toContain('SELECT id, name as full_name FROM users'); // Memory dialect preserves unquoted
+
+      // With explicit quoteIdentifier helper method on QueryBuilder
+      expect(qb.quoteIdentifier('users.id', 'mysql')).toBe('`users`.`id`');
+      expect(qb.quoteIdentifier('users.id', 'pg')).toBe('"users"."id"');
+      expect(qb.quoteIdentifier('users.id', 'sqlite3')).toBe('"users"."id"');
     });
   });
 });
