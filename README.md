@@ -13,23 +13,44 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
   <p align="center">
+    <a href="https://aerojs.atifsoft.com" target="_blank">
+      <img src="https://img.shields.io/badge/Official_Website-aerojs.atifsoft.com-06b6d4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="AeroJS Official Website" />
+    </a>
+  </p>
+
+  <p align="center">
     <strong>Fastify's speed. AdonisJS's DX. Express's simplicity.</strong><br>
     Natively crafted for <strong>React</strong>, <strong>Vue 3</strong> (Inertia.js), and <strong>SSR Monoliths</strong> (Edge.js, EJS).
+  </p>
+
+  <p align="center">
+    🌐 <strong>Official Website & Live Benchmark Arena:</strong> <a href="https://aerojs.atifsoft.com" target="_blank"><strong>https://aerojs.atifsoft.com</strong></a>
   </p>
 </div>
 
 ---
 
-## 🚀 Official Starter Kits & Real-World Showcases
+## 🚀 Official Website, Starter Kits & Real-World Showcases
 
-Jumpstart your next enterprise application with production-ready starter templates built on **AeroJS**:
+Experience **AeroJS** in production on our official showcase portal or jumpstart your application with production-ready starter templates:
 
-| Starter Application | Stack | Architecture | Key Features |
+### 🌐 Official Live Portal & Interactive Playground
+> **Live Site:** [**https://aerojs.atifsoft.com**](https://aerojs.atifsoft.com)
+> 
+> * ⚡ **Real-Time Benchmark Arena:** Interactive toggles comparing RPS, Cold Boot latency, Memory footprint, and Dependencies against Express, Fastify, NestJS, and AdonisJS.
+> * 💻 **Interactive Browser Terminal:** Live `/api/simulate-load` latency testing with sub-3ms response times.
+> * 🏗️ **Layered MVC Visualizer:** Interactive flow diagram from Middleware → Router → Validator → Controller → Service → Active Record ORM.
+> * 🛡️ **Zero-Dependency Architecture:** Live MySQL 8 / MariaDB integration, Knex connection pooling, and Vue 3 Inertia SPA.
+
+### 📦 Production Starter Kits
+
+| Application / Starter | Stack | Architecture | Live Demo / Repository |
 | :--- | :--- | :--- | :--- |
-| **[AeroSaaS-React](https://github.com/atifsoftware/AeroSaaS-React)** | React 18 + Inertia.js + Tailwind CSS | Single Page App (SPA) | Kanban board, Executive Dashboard, Scrypt Auth, Signed Invites |
-| **[AeroSaaS-Vue](https://github.com/atifsoftware/AeroSaaS-Vue)** | Vue 3 (Composition API) + Inertia.js + Tailwind | Single Page App (SPA) | Optimistic UI updates, Kanban board, Swagger docs, Native SQLite |
-| **[AeroSaaS-Edge](https://github.com/atifsoftware/AeroSaaS-Edge)** | AdonisJS Edge.js 6 + Tailwind CSS | Server-Side Rendered (MPA) | Instant FCP, 100% SEO score, In-memory AST caching, Zero client JS |
-| **[AeroSaaS-EJS](https://github.com/atifsoftware/AeroSaaS-EJS)** | EJS Templates + Tailwind CSS | Server-Side Rendered (MPA) | Classic async node streaming, Full dark theme, OpenAPI Swagger |
+| 🌐 **[AeroJS Official Portal](https://aerojs.atifsoft.com)** | Vue 3 + Inertia.js + MySQL 8 | Full-Stack SPA | [**Live: aerojs.atifsoft.com**](https://aerojs.atifsoft.com) |
+| 📦 **[AeroSaaS-React](https://github.com/atifsoftware/AeroSaaS-React)** | React 18 + Inertia.js + Tailwind CSS | Single Page App (SPA) | [GitHub Repository](https://github.com/atifsoftware/AeroSaaS-React) |
+| 📦 **[AeroSaaS-Vue](https://github.com/atifsoftware/AeroSaaS-Vue)** | Vue 3 (Composition API) + Inertia.js + Tailwind | Single Page App (SPA) | [GitHub Repository](https://github.com/atifsoftware/AeroSaaS-Vue) |
+| 📦 **[AeroSaaS-Edge](https://github.com/atifsoftware/AeroSaaS-Edge)** | AdonisJS Edge.js 6 + Tailwind CSS | Server-Side Rendered (MPA) | [GitHub Repository](https://github.com/atifsoftware/AeroSaaS-Edge) |
+| 📦 **[AeroSaaS-EJS](https://github.com/atifsoftware/AeroSaaS-EJS)** | EJS Templates + Tailwind CSS | Server-Side Rendered (MPA) | [GitHub Repository](https://github.com/atifsoftware/AeroSaaS-EJS) |
 
 ---
 
@@ -1690,7 +1711,17 @@ app.get('/audit', (ctx) => {
 
 ---
 
+## 🌐 Community & Official Resources
+
+* 🌐 **Official Website & Live Showcase:** [https://aerojs.atifsoft.com](https://aerojs.atifsoft.com)
+* 🐙 **GitHub Repository:** [https://github.com/atifsoftware/AeroJS](https://github.com/atifsoftware/AeroJS)
+* 📦 **NPM Registry Package:** [@shohaghinfo/aerojs](https://www.npmjs.com/package/@shohaghinfo/aerojs)
+* 💬 **Issue Tracker & Discussions:** [GitHub Issues](https://github.com/atifsoftware/AeroJS/issues)
+
+---
+
 ## 📄 License
 
 [MIT](LICENSE) © 2026 Aero Core Team.
+
 
