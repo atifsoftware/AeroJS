@@ -271,6 +271,13 @@ export function encrypted(): PropertyDecorator {
   };
 }
 
+export class MassAssignmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MassAssignmentError';
+  }
+}
+
 // ─── Model Base Class ─────────────────────────────────────────────────────────
 
 export class Model {
@@ -279,7 +286,31 @@ export class Model {
   public static primaryKey = 'id';
   public static hidden: string[] = [];
   public static fillable: string[] = [];
+  public static guarded: string[] = ['*'];
+  public static strictFill = true;
+  public static isUnguarded = false;
   public static encrypted: string[] = [];
+
+  public static unguard(): void {
+    Model.isUnguarded = true;
+  }
+
+  public static reguard(): void {
+    Model.isUnguarded = false;
+  }
+
+  public static isFillable(key: string): boolean {
+    if (Model.isUnguarded) {
+      return true;
+    }
+    if (this.fillable.length > 0) {
+      return this.fillable.includes(key) && !this.guarded.includes(key);
+    }
+    if (this.guarded.includes('*') || this.guarded.includes(key)) {
+      return false;
+    }
+    return true;
+  }
   public static tenanted = false;
   public static tenantColumn = 'tenant_id';
   public static softDeletes = false;
@@ -387,10 +418,34 @@ export class Model {
   public fill(attributes: Record<string, any>): this {
     const raw = attributes instanceof Model ? attributes.getAttributes() : attributes;
     const Ctor = this.constructor as typeof Model;
-    for (const [key, value] of Object.entries(raw)) {
-      if (Ctor.fillable.length === 0 || Ctor.fillable.includes(key)) {
-        this._attributes[key] = value;
+
+    if (!Model.isUnguarded) {
+      const isExplicitlyConfigured =
+        Ctor.fillable.length > 0 || (!Ctor.guarded.includes('*') && Array.isArray(Ctor.guarded));
+
+      if (!isExplicitlyConfigured && Object.keys(raw).length > 0) {
+        throw new MassAssignmentError(
+          `Mass assignment prohibited: model '${Ctor.name || 'Model'}' has no fillable attributes defined. Configure 'fillable' or set 'guarded = []' to allow.`
+        );
       }
+    }
+
+    for (const [key, value] of Object.entries(raw)) {
+      if (Ctor.isFillable(key)) {
+        this._attributes[key] = value;
+      } else if (Ctor.strictFill && !Model.isUnguarded) {
+        throw new MassAssignmentError(
+          `Cannot mass-assign protected or unguarded attribute '${key}' on model '${Ctor.name || 'Model'}'.`
+        );
+      }
+    }
+    return this;
+  }
+
+  public forceFill(attributes: Record<string, any>): this {
+    const raw = attributes instanceof Model ? attributes.getAttributes() : attributes;
+    for (const [key, value] of Object.entries(raw)) {
+      this._attributes[key] = value;
     }
     return this;
   }

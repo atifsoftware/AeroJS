@@ -1,3 +1,5 @@
+import { Aero } from '../src/core/application.js';
+import { createTestClient } from '../src/testing/test-client.js';
 import { describe, it, expect } from 'vitest';
 import { compose, type Middleware } from '../src/core/middleware.js';
 import { AeroContext } from '../src/core/context.js';
@@ -105,4 +107,30 @@ describe('Middleware Composer (Onion Model)', () => {
     const pipeline = compose([]);
     await expect(pipeline(ctx)).resolves.toBeUndefined();
   });
+  it('throws descriptive error when route references an unregistered named middleware', async () => {
+    const app = new Aero();
+    app.get('/unregistered', ['missingMiddleware', (ctx) => ctx.text('ok')]);
+
+    const client = createTestClient(app);
+    const res = await client.get('/unregistered');
+    expect(res.status).toBe(500);
+  });
+
+  it('caches compiled route pipeline across multiple requests', async () => {
+    const app = new Aero();
+    let handlerExecutions = 0;
+    app.get('/cached', (ctx) => {
+      handlerExecutions++;
+      ctx.text('done');
+    });
+
+    const client = createTestClient(app);
+    const res1 = await client.get('/cached');
+    expect(res1.status).toBe(200);
+
+    const res2 = await client.get('/cached');
+    expect(res2.status).toBe(200);
+    expect(handlerExecutions).toBe(2);
+  });
+
 });

@@ -3,6 +3,7 @@ import { Model, DB, Schema, ModelFactory, Seeder, DatabaseSeeder } from '../src/
 
 class User extends Model {
   public static override table = 'users';
+  public static override fillable = ['id', 'name', 'role', 'active'];
 }
 
 class UserSeeder extends Seeder {

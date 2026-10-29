@@ -7,8 +7,8 @@
   [![CI](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml/badge.svg)](https://github.com/atifsoftware/AeroJS/actions/workflows/ci.yml)
   [![NPM Version](https://img.shields.io/npm/v/@shohaghinfo/aerojs.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/@shohaghinfo/aerojs)
   [![NPM Downloads](https://img.shields.io/npm/dm/@shohaghinfo/aerojs.svg?style=flat-square&color=green)](https://www.npmjs.com/package/@shohaghinfo/aerojs)
-  [![Coverage: 88%+](https://img.shields.io/badge/coverage-88%25-brightgreen.svg)](package.json)
-  [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
+  [![Coverage](https://img.shields.io/badge/coverage-76%25-brightgreen.svg)](package.json)
+  [![Zero Framework Dependencies](https://img.shields.io/badge/framework%20dependencies-0-success.svg)](package.json)
   [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-darkgreen.svg)](package.json)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -61,6 +61,7 @@ Experience **AeroJS** in production on our official showcase portal or jumpstart
 - [Architecture & Request Lifecycle](#-architecture--request-lifecycle)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
+- [Upgrading to v0.5.0](#-upgrading-to-v050)
 - [Core Concepts & Guides](#-core-concepts--guides)
   1. [Radix Tree Router & Path Parameters](#1-radix-tree-router--path-parameters)
   2. [Onion Middleware Model (Koa-style)](#2-onion-middleware-model-koa-style)
@@ -109,7 +110,7 @@ Experience **AeroJS** in production on our official showcase portal or jumpstart
 
 Aero is engineered from first principles to combine the best architectural concepts in the Node.js ecosystem into a single unified library:
 
-1. **Zero Runtime Dependencies:** Pure Node.js 20+ built-ins (`node:http`, `node:url`, `node:stream`, `node:events`). No supply chain vulnerabilities, instant installations, tiny footprint.
+1. **Zero Framework Dependencies:** Pure Node.js 20+ built-ins (`node:http`, `node:url`, `node:stream`, `node:events`) with only one standard utility polyfill (`reflect-metadata` for TypeScript IoC parameter decorator reflection). Zero third-party web, routing, validation, template, or ORM dependencies in core.
 2. **TypeScript-First & Type-Safe:** Built with TypeScript strict mode, emitting clean ESM JavaScript.
 3. **Onion Middleware:** Downstream and upstream execution (`await next()`).
 4. **Lifecycle Hooks:** 8 deterministic lifecycle hooks for monitoring, transformation, and security.
@@ -262,6 +263,54 @@ app.get('/hello/:name', (ctx) => {
 
 await app.listen(3000);
 console.log('Server running at http://localhost:3000');
+```
+
+---
+
+## 🚨 Upgrading to v0.5.0
+
+Version `0.5.0` introduces security hardening and performance optimizations. Review the breaking changes below before upgrading from `v0.4.x`:
+
+### 🛡️ 1. Breaking: Mass Assignment Protection Enabled by Default
+In previous versions (`<= 0.4.4`), models were permissive by default unless `fillable` or `guarded` was explicitly configured.  
+In `v0.5.0+`, models follow the **Secure by Default** standard:
+- `Model.strictFill = true` and `Model.guarded = ['*']` by default.
+- Passing attributes into `new Model(attributes)`, `Model.create(attributes)`, or `model.fill(attributes)` on a model without explicit `fillable` definitions will now throw a `MassAssignmentError`.
+
+**How to migrate:**
+1. **Declare fillable fields** (recommended):
+   ```typescript
+   export class User extends Model {
+     public static override table = 'users';
+     public static override fillable = ['name', 'email', 'role'];
+   }
+   ```
+2. **Opt out of mass assignment protection** (if you prefer open models):
+   ```typescript
+   export class LogEntry extends Model {
+     public static override guarded = []; // Allows all attributes
+   }
+   ```
+3. **Use force methods** for trusted internal calls, background jobs, or test seeders:
+   ```typescript
+   await User.forceCreate({ name: 'Admin', role: 'superadmin' });
+   // or
+   user.forceFill({ role: 'superadmin' });
+   ```
+
+> [!NOTE]
+> Database hydration (`User.find()`, `User.all()`, query builder results) bypasses `fill()` and is **completely unaffected** by this change.
+
+### 🌐 2. Router Parameter Isolation & Mid-Path Wildcards
+- Parameter names are now mapped strictly per route (`route.paramNames`), eliminating cross-route parameter collisions between routes sharing segments (e.g., `/users/:id` vs `/users/:slug/posts`).
+- Route parameter names are immutable (`Object.freeze`).
+- Mid-path wildcard candidates are partitioned with candidate boundary verification, avoiding false 404s.
+
+### ⚡ 3. Flexible `vite()` Helper
+`vite()` now supports options object syntax and safe parameter-free invocation:
+```typescript
+vite(); // Returns HMR client script in dev mode safely without src="undefined"
+vite({ entry: 'resources/js/app.ts', devServerUrl: 'http://localhost:5173' });
 ```
 
 ---
@@ -1274,7 +1323,7 @@ Benchmarked on **Node.js v24 (x64)** using `npm run benchmark`:
 
 ### 📦 2. Package Size & Footprint Comparison
 
-Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS has **ZERO runtime dependencies**.
+Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS has **Zero Framework Dependencies** (with only `reflect-metadata` as a standard utility polyfill for TypeScript IoC parameter decorator reflection).
 
 | Framework | Runtime Dependencies | `node_modules` Install Size | Cold Start Time | Baseline Idle RAM |
 |---|:---:|:---:|:---:|:---:|
@@ -1282,15 +1331,15 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 | **Fastify** | 16 packages | ~8.4 MB | ~24 ms | ~32 MB |
 | **AdonisJS** | 50+ packages | ~38 MB | ~110 ms | ~68 MB |
 | **NestJS (Express)** | 72 packages | ~54 MB | ~195 ms | ~85 MB |
-| **AeroJS** | **0 (Zero)** | **~180 KB (Self only)** | **< 4 ms** | **~16 MB** |
+| **AeroJS** | **0 Framework (1 polyfill)** | **~240 KB (Self only)** | **< 4 ms** | **~16 MB** |
 
 ---
 
 ### 💎 3. Key Advantages of AeroJS
 
-#### 🛡️ 100% Zero Supply-Chain Risk
-- **Zero third-party code in production:** `npm audit` will always return `0 vulnerabilities`.
-- Completely immune to upstream dependency attacks, malicious package compromises, and breaking transitive updates.
+#### 🛡️ Supply-Chain Hardened & Minimal Surface
+- **Zero third-party web/framework dependencies in production:** only the standard TypeScript reflection polyfill (`reflect-metadata`) is installed.
+- Completely immune to transitive upstream web framework attacks, bloated node_modules trees, and breaking transitive updates.
 
 #### ⚡ Sub-Millisecond Cold Starts (< 4ms)
 - Because Node.js doesn't have to scan, resolve, or compile hundreds of files in `node_modules`, AeroJS boots virtually instantaneously.
@@ -1690,7 +1739,7 @@ app.get('/audit', (ctx) => {
 
 | Feature | Express | Koa | Fastify | AdonisJS | **AeroJS** |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **Zero Runtime Dependencies** | ❌ (30+) | ❌ (20+) | ❌ (15+) | ❌ (50+) | **✅ ZERO** |
+| **Zero Framework Dependencies** | ❌ (30+) | ❌ (20+) | ❌ (15+) | ❌ (50+) | **✅ ZERO (1 polyfill)** |
 | **Radix Tree Routing** | ❌ | ❌ | ✅ | ❌ | **✅ O(k)** |
 | **Onion Middleware (`await next()`)** | ❌ | ✅ | ❌ | ✅ | **✅** |
 | **Lifecycle Hooks (8 stages)** | ❌ | ❌ | ✅ | ❌ | **✅** |
@@ -1707,7 +1756,7 @@ app.get('/audit', (ctx) => {
 
 > [!NOTE]
 > **Design Philosophy Note:**  
-> Express, Koa, Fastify, and AdonisJS are battle-tested giants that deeply inspired AeroJS. While those frameworks achieve many of these capabilities through extensive third-party plugins and ecosystem packages, AeroJS is uniquely architected to provide these full-stack features **out-of-the-box with ZERO runtime dependencies**.
+> Express, Koa, Fastify, and AdonisJS are battle-tested giants that deeply inspired AeroJS. While those frameworks achieve many of these capabilities through extensive third-party plugins and ecosystem packages, AeroJS is uniquely architected to provide these full-stack features **out-of-the-box with Zero Framework Dependencies** (requiring only `reflect-metadata` for TypeScript IoC parameter reflection).
 
 ---
 

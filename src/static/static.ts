@@ -3,7 +3,16 @@
  * @description Zero-dependency high-performance static asset server with caching and SPA fallback.
  */
 
-import { statSync, createReadStream, existsSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
+import { stat as asyncStat } from 'node:fs/promises';
+
+async function safeStat(path: string) {
+  try {
+    return await asyncStat(path);
+  } catch {
+    return null;
+  }
+}
 import { resolve, join, extname, normalize, sep } from 'node:path';
 import type { Middleware } from '../core/types.js';
 import type { DefaultState } from '../core/context.js';
@@ -115,11 +124,11 @@ export function serveStatic<State = DefaultState>(options: StaticOptions): Middl
       return ctx.status(403).text('Forbidden: Directory traversal attempt');
     }
 
-    let stat = existsSync(filePath) ? statSync(filePath) : null;
+    let stat = await safeStat(filePath);
 
     if (stat && stat.isDirectory()) {
       filePath = join(filePath, indexFile);
-      stat = existsSync(filePath) ? statSync(filePath) : null;
+      stat = await safeStat(filePath);
     }
 
     // SPA fallback handling
@@ -127,7 +136,7 @@ export function serveStatic<State = DefaultState>(options: StaticOptions): Middl
       const acceptsHtml = ctx.req.get('accept')?.includes('text/html') || !extname(pathname);
       if (acceptsHtml) {
         filePath = join(rootDir, fallbackFile);
-        stat = existsSync(filePath) ? statSync(filePath) : null;
+        stat = await safeStat(filePath);
       }
     }
 

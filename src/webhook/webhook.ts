@@ -125,10 +125,38 @@ export class Webhook {
   }
 
   /**
+   * Generates an HMAC-SHA256 hex signature for a payload.
+   */
+  public static sign(payload: any, secret: string): string {
+    const bodyString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(bodyString);
+    return hmac.digest('hex');
+  }
+
+  /**
+   * Verifies an HMAC-SHA256 signature against a payload using timing-safe comparison.
+   */
+  public static verifySignature(payload: any, signature: string, secret: string): boolean {
+    const cleanSignature = signature.replace(/^sha256=/, '').trim();
+    const computedSignature = this.sign(payload, secret);
+    try {
+      const expectedBuf = Buffer.from(cleanSignature, 'hex');
+      const computedBuf = Buffer.from(computedSignature, 'hex');
+      return (
+        expectedBuf.length === computedBuf.length &&
+        crypto.timingSafeEqual(expectedBuf, computedBuf)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Inbound Webhook Middleware verifying HMAC-SHA256 signature header.
    */
   public static verify(secret: string, headerName: string = 'x-aero-signature') {
-    return async function (ctx: any, next: any) {
+    return async (ctx: any, next: any) => {
       const rawHeader =
         ctx.req.headers[headerName.toLowerCase()] ||
         ctx.req.headers['x-signature'] ||
@@ -138,10 +166,6 @@ export class Webhook {
         throw new UnauthorizedError('Missing webhook signature header.');
       }
 
-      // Extract hex signature (supports "sha256=<hex>" or raw "<hex>")
-      const expectedSignature = String(rawHeader).replace(/^sha256=/, '').trim();
-
-      // Get payload string from parsed body or raw stream
       const rawBody =
         typeof ctx.body === 'string'
           ? ctx.body
@@ -149,22 +173,8 @@ export class Webhook {
           ? JSON.stringify(ctx.body)
           : '';
 
-      const hmac = crypto.createHmac('sha256', secret);
-      hmac.update(rawBody);
-      const computedSignature = hmac.digest('hex');
-
-      try {
-        const expectedBuf = Buffer.from(expectedSignature, 'hex');
-        const computedBuf = Buffer.from(computedSignature, 'hex');
-
-        if (
-          expectedBuf.length !== computedBuf.length ||
-          !crypto.timingSafeEqual(expectedBuf, computedBuf)
-        ) {
-          throw new UnauthorizedError('Invalid webhook signature.');
-        }
-      } catch {
-        throw new UnauthorizedError('Invalid webhook signature format.');
+      if (!Webhook.verifySignature(rawBody, String(rawHeader), secret)) {
+        throw new UnauthorizedError('Invalid webhook signature.');
       }
 
       await next();

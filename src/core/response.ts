@@ -150,11 +150,13 @@ export class AeroResponse {
     this._bodyPayload = data;
 
     if (data === null || data === undefined) {
-      if (!this.raw.statusCode || this.raw.statusCode === 200) {
-        this.status(204);
+      if (!this.isHead) {
+        if (!this.raw.statusCode || this.raw.statusCode === 200) {
+          this.status(204);
+        }
+        this.raw.removeHeader('Content-Type');
+        this.raw.removeHeader('Content-Length');
       }
-      this.raw.removeHeader('Content-Type');
-      this.raw.removeHeader('Content-Length');
       this.flushEnd();
       return;
     }

@@ -41,7 +41,7 @@ export function initProject(targetDirectory = '.', options: InitProjectOptions =
 
   // 1. package.json
   const dependencies: Record<string, string> = {
-    aerojs: 'npm:@shohaghinfo/aerojs@^0.4.4',
+    aerojs: 'npm:@shohaghinfo/aerojs@^0.5.0',
     knex: '^3.3.0',
     mysql2: '^3.11.0',
   };

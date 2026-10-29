@@ -16,10 +16,11 @@ import { AeroRequest } from './request.js';
 import { AeroResponse } from './response.js';
 import { AeroContext, type DefaultState } from './context.js';
 import { compose } from './middleware.js';
-import { Router, type RouteSchema } from './router.js';
+import { Router, type Route, type RouteSchema } from './router.js';
 import type {
   AeroOptions,
   Middleware,
+  ComposedMiddleware,
   ErrorHandler,
 } from './types.js';
 import { parseBody } from './body-parser.js';
@@ -64,6 +65,7 @@ export class ApplicationCore<State = DefaultState> {
   public readonly router: Router<State>;
   public readonly hookRunner = new HookRunner<State>();
   protected readonly middlewares: Middleware<State>[] = [];
+  protected middlewareVersion = 0;
 
 
   public async broadcast(channels: string | string[], event: string, data?: any): Promise<void> {
@@ -127,9 +129,11 @@ export class ApplicationCore<State = DefaultState> {
           }
         };
         this.middlewares.push(scopedMiddleware);
+        this.middlewareVersion++;
       }
     } else if (typeof fnOrPrefix === 'function') {
       this.middlewares.push(fnOrPrefix);
+      this.middlewareVersion++;
     }
     return this;
   }
@@ -533,14 +537,8 @@ export class ApplicationCore<State = DefaultState> {
       await this.hookRunner.runPreHandler(ctx);
       if (res.isSent) return;
 
-      // 7. Compose and run global middleware + route handlers
-      const resolvedHandlers: Middleware<State>[] = match.handlers.map((h: any) => {
-        if (typeof h === 'string') {
-          return this.namedMiddleware.get(h);
-        }
-        return h;
-      });
-      const pipeline = compose([...this.middlewares, ...resolvedHandlers]);
+      // 7. Run route pipeline (cached per route)
+      const pipeline = this.getRoutePipeline(match.route);
       await pipeline(ctx);
 
       // 5. Response dispatching
@@ -677,5 +675,29 @@ export class ApplicationCore<State = DefaultState> {
         else resolve();
       });
     });
+  }
+
+  private getRoutePipeline(route: Route<State>): ComposedMiddleware<State> {
+    const cached = (route as any)._pipeline;
+    if (cached && (route as any)._pipelineVersion === this.middlewareVersion) {
+      return cached;
+    }
+
+    const resolvedHandlers: Middleware<State>[] = route.handlers.map((h: any) => {
+      if (typeof h === 'string') {
+        if (!this.namedMiddleware.has(h)) {
+          throw new Error(
+            `Route '${route.method} ${route.path}' references unregistered named middleware '${h}'`
+          );
+        }
+        return this.namedMiddleware.get(h);
+      }
+      return h;
+    });
+
+    const pipeline = compose([...this.middlewares, ...resolvedHandlers]);
+    (route as any)._pipeline = pipeline;
+    (route as any)._pipelineVersion = this.middlewareVersion;
+    return pipeline;
   }
 }

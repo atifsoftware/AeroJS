@@ -13,14 +13,22 @@ export interface TcpServerOptions {
 
 export class TcpServer extends EventEmitter {
   private server: net.Server;
-  public readonly port: number;
+  private _port: number;
   public readonly host: string;
   private sockets = new Set<net.Socket>();
 
+  public get port(): number {
+    const addr = this.server.address();
+    if (addr && typeof addr === 'object') {
+      return addr.port;
+    }
+    return this._port;
+  }
+
   constructor(options: TcpServerOptions) {
     super();
-    this.port = options.port;
-    this.host = options.host || '0.0.0.0';
+    this._port = options.port;
+    this.host = options.host || '127.0.0.1';
 
     this.server = net.createServer((socket) => {
       this.sockets.add(socket);
@@ -41,16 +49,20 @@ export class TcpServer extends EventEmitter {
     });
 
     this.server.on('error', (err) => {
-      this.emit('error', err);
+      if (this.listenerCount('error') > 0) {
+        this.emit('error', err);
+      }
     });
   }
 
   public async listen(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server.listen(this.port, this.host, () => {
+      const errorHandler = (err: Error) => reject(err);
+      this.server.once('error', errorHandler);
+      this.server.listen(this._port, this.host, () => {
+        this.server.removeListener('error', errorHandler);
         resolve();
       });
-      this.server.once('error', reject);
     });
   }
 

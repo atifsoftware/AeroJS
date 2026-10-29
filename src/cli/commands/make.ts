@@ -82,7 +82,8 @@ export function makeModel(name: string, options: { migration?: boolean; targetDi
 export class ${className} extends Model {
   public static override table = '${tableName}';
   public static override primaryKey = 'id';
-  public static override hidden = [];
+  public static override fillable: string[] = [];
+  public static override hidden: string[] = [];
   public static override softDeletes = false;
 }
 

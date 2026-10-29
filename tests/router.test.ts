@@ -107,4 +107,41 @@ describe('Router Engine', () => {
     expect(mainRouter.match('GET', '/api/v1/health')).not.toBeNull();
     expect(mainRouter.match('GET', '/health')).toBeNull();
   });
+
+  it('prevents parameter name collision across routes sharing prefix nodes', () => {
+    const router = new Router();
+    router.add('GET', '/users/:id', [() => {}]);
+    router.add('GET', '/users/:slug/posts', [() => {}]);
+
+    const userMatch = router.match('GET', '/users/123');
+    expect(userMatch).not.toBeNull();
+    expect(userMatch?.params).toEqual({ id: '123' });
+
+    const postMatch = router.match('GET', '/users/my-cool-post/posts');
+    expect(postMatch).not.toBeNull();
+    expect(postMatch?.params).toEqual({ slug: 'my-cool-post' });
+  });
+
+  it('correctly matches and bounds mid-path wildcards', () => {
+    const router = new Router();
+    router.add('GET', '/files/*path/nested', [() => {}]);
+
+    // Matching mid-path wildcard
+    const validMatch = router.match('GET', '/files/a/b/nested');
+    expect(validMatch).not.toBeNull();
+    expect(validMatch?.params).toEqual({ path: 'a/b' });
+
+    // Non-matching mid-path wildcard should NOT over-match
+    const invalidMatch = router.match('GET', '/files/a/b/other');
+    expect(invalidMatch).toBeNull();
+  });
+
+  it('deduplicates routes in allRoutes on overwrite', () => {
+    const router = new Router();
+    router.add('GET', '/test', [() => {}]);
+    expect(router.routes.length).toBe(1);
+
+    router.add('GET', '/test', [() => {}]);
+    expect(router.routes.length).toBe(1);
+  });
 });

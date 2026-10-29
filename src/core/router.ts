@@ -30,6 +30,7 @@ export interface Route<State = DefaultState> {
   handlers: (Middleware<State> | string)[];
   schema?: RouteSchema;
   name?: string;
+  readonly paramNames?: readonly string[];
 }
 
 export interface RouteMatch<State = DefaultState> {
@@ -40,14 +41,8 @@ export interface RouteMatch<State = DefaultState> {
 
 class RadixNode<State = DefaultState> {
   public children: Map<string, RadixNode<State>> = new Map();
-  public paramChild?: {
-    paramName: string;
-    node: RadixNode<State>;
-  };
-  public wildcardChild?: {
-    paramName: string;
-    node: RadixNode<State>;
-  };
+  public paramChild?: RadixNode<State>;
+  public wildcardChild?: RadixNode<State>;
   public routes: Map<string, Route<State>> = new Map();
 }
 
@@ -128,6 +123,7 @@ export class Router<State = DefaultState> {
     const normalized = normalizePath(path);
     const segments = splitPath(normalized);
 
+    const paramNames: string[] = [];
     let current = this.root;
 
     for (let i = 0; i < segments.length; i++) {
@@ -135,23 +131,18 @@ export class Router<State = DefaultState> {
 
       if (segment.startsWith('*')) {
         const paramName = segment.length > 1 ? segment.slice(1) : '*';
+        paramNames.push(paramName);
         if (!current.wildcardChild) {
-          current.wildcardChild = {
-            paramName,
-            node: new RadixNode<State>(),
-          };
+          current.wildcardChild = new RadixNode<State>();
         }
-        current = current.wildcardChild.node;
-        break;
+        current = current.wildcardChild;
       } else if (segment.startsWith(':')) {
         const paramName = segment.slice(1);
+        paramNames.push(paramName);
         if (!current.paramChild) {
-          current.paramChild = {
-            paramName,
-            node: new RadixNode<State>(),
-          };
+          current.paramChild = new RadixNode<State>();
         }
-        current = current.paramChild.node;
+        current = current.paramChild;
       } else {
         let child = current.children.get(segment);
         if (!child) {
@@ -170,8 +161,16 @@ export class Router<State = DefaultState> {
       handlers: normalizedHandlers,
       schema,
       name,
+      paramNames: Object.freeze([...paramNames]),
     };
 
+    const existing = current.routes.get(upperMethod);
+    if (existing) {
+      const idx = this.allRoutes.indexOf(existing);
+      if (idx !== -1) {
+        this.allRoutes.splice(idx, 1);
+      }
+    }
     current.routes.set(upperMethod, route);
     this.allRoutes.push(route);
 
@@ -195,13 +194,13 @@ export class Router<State = DefaultState> {
     const upperMethod = method.toUpperCase();
     const normalized = normalizePath(path);
     const segments = splitPath(normalized);
-    const params: Record<string, string> = {};
 
-    const node = this.searchNode(this.root, segments, 0, params);
-    if (!node) {
+    const result = this.searchNode(this.root, segments, 0, []);
+    if (!result) {
       return null;
     }
 
+    const { node, captured } = result;
     let route = node.routes.get(upperMethod);
     if (!route) {
       route = node.routes.get('ALL');
@@ -214,6 +213,13 @@ export class Router<State = DefaultState> {
       return null;
     }
 
+    const params: Record<string, string> = {};
+    if (route.paramNames) {
+      for (let i = 0; i < route.paramNames.length; i++) {
+        params[route.paramNames[i]!] = captured[i] ?? '';
+      }
+    }
+
     return {
       route,
       params,
@@ -224,24 +230,22 @@ export class Router<State = DefaultState> {
   public hasPath(path: string): boolean {
     const normalized = normalizePath(path);
     const segments = splitPath(normalized);
-    const params: Record<string, string> = {};
 
-    const node = this.searchNode(this.root, segments, 0, params);
-    return Boolean(node && node.routes.size > 0);
+    const result = this.searchNode(this.root, segments, 0, []);
+    return Boolean(result && result.node.routes.size > 0);
   }
 
   public allowedMethods(path: string): string[] {
     const normalized = normalizePath(path);
     const segments = splitPath(normalized);
-    const params: Record<string, string> = {};
 
-    const node = this.searchNode(this.root, segments, 0, params);
-    if (!node) {
+    const result = this.searchNode(this.root, segments, 0, []);
+    if (!result) {
       return [];
     }
 
     const methods = new Set<string>();
-    for (const m of node.routes.keys()) {
+    for (const m of result.node.routes.keys()) {
       if (m === 'ALL') {
         methods.add('GET');
         methods.add('POST');
@@ -267,38 +271,51 @@ export class Router<State = DefaultState> {
     current: RadixNode<State>,
     segments: string[],
     index: number,
-    params: Record<string, string>
-  ): RadixNode<State> | null {
+    captured: string[]
+  ): { node: RadixNode<State>; captured: string[] } | null {
     if (index === segments.length) {
       if (current.routes.size > 0) {
-        return current;
+        return { node: current, captured };
       }
-      if (current.wildcardChild && current.wildcardChild.node.routes.size > 0) {
-        params[current.wildcardChild.paramName] = '';
-        return current.wildcardChild.node;
+      if (current.wildcardChild && current.wildcardChild.routes.size > 0) {
+        return { node: current.wildcardChild, captured: [...captured, ''] };
       }
       return null;
     }
 
     const segment = segments[index]!;
 
+    // 1. Static match
     const child = current.children.get(segment);
     if (child) {
-      const match = this.searchNode(child, segments, index + 1, params);
+      const match = this.searchNode(child, segments, index + 1, captured);
       if (match) return match;
     }
 
+    // 2. Param match
     if (current.paramChild) {
-      params[current.paramChild.paramName] = segment;
-      const match = this.searchNode(current.paramChild.node, segments, index + 1, params);
+      const match = this.searchNode(current.paramChild, segments, index + 1, [...captured, segment]);
       if (match) return match;
-      delete params[current.paramChild.paramName];
     }
 
+    // 3. Wildcard match
     if (current.wildcardChild) {
-      const remaining = segments.slice(index).join('/');
-      params[current.wildcardChild.paramName] = remaining;
-      return current.wildcardChild.node;
+      const remainingCount = segments.length - index;
+
+      // If wildcard has child branches (e.g. /files/*path/nested), try candidate lengths
+      if (current.wildcardChild.children.size > 0 || current.wildcardChild.paramChild) {
+        for (let k = 0; k < remainingCount; k++) {
+          const wildcardVal = segments.slice(index, index + k).join('/');
+          const match = this.searchNode(current.wildcardChild, segments, index + k, [...captured, wildcardVal]);
+          if (match) return match;
+        }
+      }
+
+      // Terminal wildcard match: consumes all remaining segments
+      if (current.wildcardChild.routes.size > 0) {
+        const remainingVal = segments.slice(index).join('/');
+        return { node: current.wildcardChild, captured: [...captured, remainingVal] };
+      }
     }
 
     return null;

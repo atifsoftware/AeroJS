@@ -54,16 +54,21 @@ export class Inertia<State = DefaultState> {
       }
     }
 
-    if (typeof config.rootView === 'function') {
-      this.rootView = config.rootView;
-    } else {
-      const template = config.rootView ?? this.defaultHtmlTemplate();
-      this.rootView = async (page: InertiaPage) => {
-        if (this.ssrEngine) {
-          const rendered = await this.ssrEngine.render(page);
-          return rendered.html;
-        }
+    this.rootView = async (page: InertiaPage) => {
+      let template: string;
+      if (typeof config.rootView === 'function') {
+        template = await config.rootView(page);
+      } else {
+        template = config.rootView ?? this.defaultHtmlTemplate();
+      }
 
+      if (this.ssrEngine) {
+        const rendered = await this.ssrEngine.render(page);
+        return rendered.html;
+      }
+
+      const placeholderRegex = /@inertia|<!--\s*@inertia\s*-->|<div\s+id=["']app["']\s*>\s*<\/div>/;
+      if (placeholderRegex.test(template)) {
         const escaped = JSON.stringify(page)
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -72,11 +77,13 @@ export class Inertia<State = DefaultState> {
           .replace(/'/g, '&#039;');
 
         return template.replace(
-          /@inertia|<!-- @inertia -->|<div id="app"><\/div>/,
+          placeholderRegex,
           `<div id="app" data-page="${escaped}"></div>`
         );
-      };
-    }
+      }
+
+      return template;
+    };
   }
 
   public share(keyOrProps: string | Record<string, InertiaProp>, value?: InertiaProp): this {

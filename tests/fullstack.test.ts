@@ -53,6 +53,13 @@ describe('Fullstack Capabilities: Static, CORS, Views & Inertia.js', () => {
         headers: { 'if-none-match': etag },
       });
       expect(cachedRes.status).toBe(304);
+
+      // Test RFC-compliant HEAD request
+      const headRes = await client.head('/assets/styles.css');
+      expect(headRes.status).toBe(200);
+      expect(headRes.headers['content-type']).toBe('text/css; charset=utf-8');
+      expect(headRes.headers['content-length']).toBeDefined();
+      expect(headRes.text()).toBe('');
     });
 
     it('falls back to index.html for client-side SPA routing', async () => {
@@ -333,6 +340,17 @@ describe('Fullstack Capabilities: Static, CORS, Views & Inertia.js', () => {
       expect(tags).toContain('http://localhost:5173/@vite/client');
       expect(tags).toContain('http://localhost:5173/resources/css/app.css');
       expect(tags).toContain('http://localhost:5173/resources/js/app.tsx');
+    });
+
+    it('supports ViteOptions object signature and safely handles empty entry', async () => {
+      const { vite } = await import('../src/index.js');
+      const tagsFromObj = vite({ entry: 'resources/js/app.ts', devServerUrl: 'http://localhost:5174' });
+      expect(tagsFromObj).toContain('http://localhost:5174/@vite/client');
+      expect(tagsFromObj).toContain('http://localhost:5174/resources/js/app.ts');
+
+      const clientOnly = vite();
+      expect(clientOnly).toBe('<script type="module" src="http://localhost:5173/@vite/client"></script>');
+      expect(clientOnly).not.toContain('undefined');
     });
   });
 });

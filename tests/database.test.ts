@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   DB,
   Model,
+  MassAssignmentError,
   Schema,
   Migrator,
   validateIdentifier,
@@ -14,6 +15,7 @@ import { NotFoundError } from '../src/core/errors.js';
 class User extends Model {
   public static override table = 'users';
   public static override primaryKey = 'id';
+  public static override fillable = ['id', 'name', 'email', 'role', 'age', 'password', 'deleted_at'];
   public static override hidden = ['password'];
   public static override softDeletes = true;
 
@@ -28,6 +30,7 @@ class User extends Model {
 
 class Post extends Model {
   public static override table = 'posts';
+  public static override fillable = ['id', 'user_id', 'title'];
 
   public user() {
     return this.belongsTo(User, 'user_id', 'id');
@@ -36,6 +39,7 @@ class Post extends Model {
 
 class Profile extends Model {
   public static override table = 'profiles';
+  public static override fillable = ['id', 'user_id', 'bio'];
 }
 
 describe('AeroJS Database & Active Record ORM (Step 1)', () => {
@@ -456,6 +460,44 @@ describe('AeroJS Database & Active Record ORM (Step 1)', () => {
       expect(qb.quoteIdentifier('users.id', 'mysql')).toBe('`users`.`id`');
       expect(qb.quoteIdentifier('users.id', 'pg')).toBe('"users"."id"');
       expect(qb.quoteIdentifier('users.id', 'sqlite3')).toBe('"users"."id"');
+    });
+
+    it('enforces mass assignment protections (fillable, guarded, strictFill)', () => {
+      class UnconfiguredUser extends Model {
+        public static override table = 'unconfigured_users';
+      }
+
+      // Default without fillable or guarded: completely blocks mass assignment
+      expect(() => new UnconfiguredUser({ role: 'admin', is_verified: true })).toThrow(MassAssignmentError);
+
+      class ProtectedUser extends Model {
+        public static override table = 'protected_users';
+        public static override fillable = ['name', 'email'];
+        public static override strictFill = false;
+      }
+
+      const u1 = new ProtectedUser({ name: 'Safe', email: 'safe@test.com', role: 'admin' });
+      expect(u1.name).toBe('Safe');
+      expect(u1.email).toBe('safe@test.com');
+      expect(u1.get('role')).toBeNull();
+
+      class GuardedUser extends Model {
+        public static override table = 'guarded_users';
+        public static override guarded = ['role'];
+        public static override strictFill = false;
+      }
+
+      const u2 = new GuardedUser({ name: 'Safe2', role: 'superadmin' });
+      expect(u2.name).toBe('Safe2');
+      expect(u2.get('role')).toBeNull();
+
+      class StrictUser extends Model {
+        public static override table = 'strict_users';
+        public static override fillable = ['name'];
+        public static override strictFill = true;
+      }
+
+      expect(() => new StrictUser({ name: 'Valid', role: 'Forbidden' })).toThrow(MassAssignmentError);
     });
   });
 });

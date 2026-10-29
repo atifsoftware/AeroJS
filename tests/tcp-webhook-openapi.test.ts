@@ -42,8 +42,7 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
 
     it('communicates over raw TCP using app.tcp gateway', async () => {
       const app = new Aero();
-      const port = 12575;
-      const tcpServer = app.tcp({ port });
+      const tcpServer = app.tcp({ port: 0, host: '127.0.0.1' });
 
       tcpServer.on('data', (socket, buffer) => {
         const unwrapped = MLLP.unwrap(buffer);
@@ -53,9 +52,10 @@ describe('Integration & Protocol Modules: TCP/MLLP Gateway, Webhooks, OpenAPI 3.
       });
 
       await tcpServer.listen();
+      const port = tcpServer.port;
 
       const receivedAck = await new Promise<string>((resolve, reject) => {
-        const client = net.createConnection({ port }, () => {
+        const client = net.createConnection({ port, host: '127.0.0.1' }, () => {
           const testMsg = 'MSH|^~\\&|CLIENT_NODE|FEED|AERO|APP|20261002||ORU^R01|TEST-42|P|2.3.1\r';
           client.write(MLLP.wrap(testMsg));
         });

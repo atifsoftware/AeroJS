@@ -43,6 +43,8 @@ export class RouteBuilder<State = DefaultState> {
   public middleware(...middlewares: (Middleware<State> | string)[]): this {
     this.addedMiddlewares.push(...middlewares);
     this.route.handlers = [...this.addedMiddlewares, ...this.initialHandlers];
+    delete (this.route as any)._pipeline;
+    delete (this.route as any)._pipelineVersion;
     return this;
   }
 

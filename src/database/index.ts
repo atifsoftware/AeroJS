@@ -23,6 +23,7 @@ export {
 export {
   Model,
   Relation,
+  MassAssignmentError,
   computed,
   encrypted,
   type RelationDefinition,

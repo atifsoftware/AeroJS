@@ -9,10 +9,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface ViteOptions {
-  entry: string | string[];
+  entry?: string | string[];
   buildDirectory?: string; // Default: 'public/build'
   manifestPath?: string;   // Default: 'public/build/manifest.json' or 'public/build/.vite/manifest.json'
   devServerUrl?: string;   // Default: 'http://localhost:5173'
+  dev?: boolean;           // Force dev HMR mode or auto-detect
 }
 
 let cachedManifest: Record<string, { file: string; css?: string[] }> | null = null;
@@ -22,7 +23,28 @@ let cachedManifest: Record<string, { file: string; css?: string[] }> | null = nu
  * In development, points to the Vite HMR server (http://localhost:5173).
  * In production, resolves asset filenames and hashed CSS from manifest.json.
  */
-export function vite(entry: string | string[], options: Partial<ViteOptions> = {}): string {
+export function vite(
+  entry?: string | string[] | Partial<ViteOptions>,
+  optionsArg: Partial<ViteOptions> = {}
+): string {
+  let entries: string[] = [];
+  let options: Partial<ViteOptions> = optionsArg;
+
+  if (typeof entry === 'string') {
+    entries = [entry];
+  } else if (Array.isArray(entry)) {
+    entries = entry;
+  } else if (entry && typeof entry === 'object') {
+    options = { ...entry, ...optionsArg };
+    if (options.entry) {
+      entries = Array.isArray(options.entry) ? options.entry : [options.entry];
+    }
+  } else if (optionsArg.entry) {
+    entries = Array.isArray(optionsArg.entry) ? optionsArg.entry : [optionsArg.entry];
+  }
+
+  entries = entries.filter((e): e is string => typeof e === 'string' && e.trim().length > 0);
+
   const buildDir = options.buildDirectory || 'public/build';
   const cleanBuildDir = buildDir.startsWith('public') ? buildDir.replace(/^public\/?/, '/') : `/${buildDir}`;
 
@@ -45,23 +67,37 @@ export function vite(entry: string | string[], options: Partial<ViteOptions> = {
 
   // Find first existing manifest
   const targetFile = candidatePaths.find((p) => existsSync(p));
-
-  // If manifest exists on disk, we are definitely in production mode (even if developer omitted NODE_ENV)
   const hasManifest = Boolean(targetFile);
-  const isDev = !hasManifest && process.env.NODE_ENV !== 'production' && process.env.APP_ENV !== 'production';
-  const devServerUrl = options.devServerUrl || 'http://localhost:5173';
-  const entries = Array.isArray(entry) ? entry : [entry];
+
+  // Check for hot reload indicator (created by vite dev server)
+  let hotUrl = '';
+  for (const root of appRoots) {
+    const hotPath = join(root, 'public', 'hot');
+    if (existsSync(hotPath)) {
+      try {
+        hotUrl = readFileSync(hotPath, 'utf-8').trim();
+      } catch {}
+      break;
+    }
+  }
+
+  // In dev mode when hotUrl exists, options.dev is true, or no manifest in non-production
+  const isDev = options.dev === true || Boolean(hotUrl) || (!hasManifest && process.env.NODE_ENV !== 'production' && process.env.APP_ENV !== 'production');
+  const devServerUrl = options.devServerUrl || hotUrl || 'http://localhost:5173';
 
   if (isDev) {
     const clientScript = `<script type="module" src="${devServerUrl}/@vite/client"></script>`;
+    if (entries.length === 0) {
+      return clientScript;
+    }
     const entryScripts = entries
       .map((e) => `<script type="module" src="${devServerUrl}/${e.replace(/^\/+/, '')}"></script>`)
       .join('\n');
     return `${clientScript}\n${entryScripts}`;
   }
 
-  // Production: Resolve from manifest.json
-  if (!cachedManifest && targetFile) {
+  // Production: Resolve from manifest.json (in dev/non-production, re-read on change)
+  if ((!cachedManifest || process.env.NODE_ENV !== 'production' || process.env.APP_ENV !== 'production') && targetFile) {
     try {
       cachedManifest = JSON.parse(readFileSync(targetFile, 'utf-8'));
     } catch {
