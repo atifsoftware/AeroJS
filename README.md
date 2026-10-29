@@ -121,16 +121,16 @@ Aero is engineered from first principles to combine the best architectural conce
 
 ## ✨ Key Features
 
-- **⚡ Blazing Fast:** O(k) Radix Tree routing (>730,000 ops/sec) with cached regex matching.
-- **🧅 Onion Middleware:** Koa-style async pipeline with double-`next()` guards (>1,300,000 ops/sec).
+- **⚡ Blazing Fast:** O(k) Radix Tree routing (>550,000 ops/sec) with cached param parsing.
+- **🧅 Onion Middleware:** Koa-style async pipeline with double-`next()` guards (>1,150,000 ops/sec).
 - **🎣 8 Lifecycle Hooks:** `onRequest`, `preParsing`, `preValidation`, `preHandler`, `preSerialization`, `onSend`, `onResponse`, `onError`.
 - **🏛️ AdonisJS-Style DI Container:** Transient bindings, singletons, instance bindings, and auto-wiring `@inject` decorators.
 - **📁 Route Groups & Fluent Builder:** Prefixes, group-level middleware, and `.as()`, `.middleware()`, `.schema()` chaining.
 - **🎮 Controllers as First-Class Citizens:** Route tuples like `[UsersController, 'index']` resolved via the IoC container.
 - **🔍 Zero-Dependency Validation:** JSON Schema engine supporting `type`, `properties`, `required`, `enum`, `minimum`, `maximum`, `minLength`, `pattern`, and formats (`email`, `uuid`).
-- **⚡ Fast JSON Serializer:** Compile-time schema-directed serializer (>1,500,000 ops/sec).
+- **⚡ Fast JSON Serializer:** Compile-time schema-directed serializer (>1,150,000 ops/sec).
 - **🔒 Encapsulated Plugins:** Child application scopes with inherited contexts and `createPlugin` (fastify-plugin) escape hatches.
-- **🧪 Ultra-Fast Test Client:** In-process testing client (`createTestClient`) running >40,000 reqs/sec without TCP sockets or port conflicts.
+- **🧪 Ultra-Fast Test Client:** In-process testing client (`createTestClient`) running >30,000 reqs/sec without TCP sockets or port conflicts.
 
 ---
 
@@ -1314,10 +1314,10 @@ Benchmarked on **Node.js v24 (x64)** using `npm run benchmark`:
 
 | Benchmark Phase | Operations | Duration | Throughput | Complexity |
 |---|---|---|---|:---:|
-| **Radix Tree Route Lookup** | 1,000,000 | ~1,340 ms | **746,140 ops/sec** | `O(k)` |
-| **Onion Middleware Composition** | 1,000,000 | ~815 ms | **1,226,641 ops/sec** | `O(1)` |
-| **Fast JSON Serialization** | 1,000,000 | ~935 ms | **1,069,200 ops/sec** | `O(n)` |
-| **In-Process Request Testing** | 20,000 | ~853 ms | **23,433 reqs/sec** | Socket-Free |
+| **Radix Tree Route Lookup** | 1,000,000 | ~1,750 ms | **~570,000 ops/sec** | `O(k)` |
+| **Onion Middleware Composition** | 1,000,000 | ~815 ms | **~1,225,000 ops/sec** | `O(1)` |
+| **Fast JSON Serialization** | 1,000,000 | ~860 ms | **~1,160,000 ops/sec** | `O(n)` |
+| **In-Process Request Testing** | 20,000 | ~650 ms | **~31,000 reqs/sec** | Socket-Free |
 
 ---
 
@@ -1327,11 +1327,11 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 
 | Framework | Runtime Dependencies | `node_modules` Install Size | Cold Start Time | Baseline Idle RAM |
 |---|:---:|:---:|:---:|:---:|
-| **Express** | 31 packages | ~5.2 MB | ~28 ms | ~38 MB |
-| **Fastify** | 16 packages | ~8.4 MB | ~24 ms | ~32 MB |
-| **AdonisJS** | 50+ packages | ~38 MB | ~110 ms | ~68 MB |
-| **NestJS (Express)** | 72 packages | ~54 MB | ~195 ms | ~85 MB |
-| **AeroJS** | **0 Framework (1 polyfill)** | **~240 KB (Self only)** | **< 4 ms** | **~16 MB** |
+| **Express** | 31 packages | ~5.2 MB | ~198 ms | ~48 MB |
+| **Fastify** | 16 packages | ~8.4 MB | ~286 ms | ~54 MB |
+| **AdonisJS** | 50+ packages | ~38 MB | ~350 ms | ~68 MB |
+| **NestJS (Express)** | 72 packages | ~54 MB | ~450 ms | ~85 MB |
+| **AeroJS** | **0 Framework (1 polyfill)** | **~2.1 MB unpacked** | **~200–260 ms (full barrel)** | **~55–60 MB** |
 
 ---
 
@@ -1341,18 +1341,18 @@ Unlike legacy Node.js frameworks that ship with bloated dependency trees, AeroJS
 - **Zero third-party web/framework dependencies in production:** only the standard TypeScript reflection polyfill (`reflect-metadata`) is installed.
 - Completely immune to transitive upstream web framework attacks, bloated node_modules trees, and breaking transitive updates.
 
-#### ⚡ Sub-Millisecond Cold Starts (< 4ms)
-- Because Node.js doesn't have to scan, resolve, or compile hundreds of files in `node_modules`, AeroJS boots virtually instantaneously.
-- Ideal for **Serverless environments** (AWS Lambda, Cloudflare Containers, Vercel Serverless, Google Cloud Run) and autoscaling Docker microservices.
+#### ⚡ Lean CPU Footprint & Fast Per-Request Dispatch
+- **Low per-request CPU cost:** In live load testing, Aero's pipeline exhibits extremely low CPU overhead (~3.4–11 µs / request), on par with bare Node.js and Fastify, and significantly leaner than Express (~29–31 µs / request).
+- Streamlined pipeline architecture with compiled route-level middleware caching.
 
 #### 🏎️ Lightning-Fast CI/CD Deployments
-- `npm install @shohaghinfo/aerojs` downloads only a few kilobytes and completes in **1–2 seconds**, drastically cutting down pipeline build times and bandwidth costs.
+- `npm install @shohaghinfo/aerojs` installs with zero external web dependencies, cutting down CI pipeline build times and supply chain risks.
 
 #### 🌐 Unified Full-Stack Architecture
 - Eliminates context switching and multi-repository overhead: build **REST APIs**, **React/Vue 3 SPAs (Inertia.js)**, and traditional **SSR Views (Edge.js/EJS)** in a single cohesive codebase.
 
 #### 🧪 Socket-Free In-Process Testing (`aero/testing`)
-- Write unit and integration tests that run at **>23,000 requests/second** without opening TCP sockets, eliminating OS port collisions, firewall popups, and socket leaks.
+- Write unit and integration tests that run at **>30,000 requests/second** without opening TCP sockets, eliminating OS port collisions, firewall popups, and socket leaks.
 
 ---
 

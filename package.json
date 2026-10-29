@@ -7,6 +7,10 @@
     "url": "git+https://github.com/atifsoftware/AeroJS.git"
   },
   "type": "module",
+  "sideEffects": [
+    "dist/core/application.js",
+    "src/core/application.ts"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {

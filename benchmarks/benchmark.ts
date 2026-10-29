@@ -3,9 +3,9 @@
  * @description Performance benchmark comparing Aero router and pipeline throughput.
  */
 
-import { Router } from '../src/router.js';
-import { compose } from '../src/middleware.js';
-import { AeroContext } from '../src/context.js';
+import { Router } from '../src/core/router.js';
+import { compose } from '../src/core/middleware.js';
+import { AeroContext } from '../src/core/context.js';
 import { EventEmitter } from 'node:events';
 
 function createMockContext(path: string, method = 'GET') {
